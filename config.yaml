@@ -1,0 +1,17 @@
+server:
+  port: "8080"
+  mode: "development"
+
+database:
+  host: "localhost"
+  port: "5432"
+  user: "postgres"
+  password: "your_password"
+  dbname: "quiz_app"
+  sslmode: "disable"
+
+redis:
+  host: "localhost"
+  port: "6379"
+  password: ""
+  db: 0
