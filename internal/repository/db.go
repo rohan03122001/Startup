@@ -29,6 +29,7 @@ func NewDatabase(cfg *config.Database)(*Database, error){
         &models.GameRound{},
         &models.PlayerAnswer{},
     )
+	
 	if err != nil{
 		return nil, fmt.Errorf("failed to migrate database %w", err)
 	}

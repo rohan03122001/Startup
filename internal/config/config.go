@@ -51,7 +51,5 @@ func LoadConfig()(*Config, error) {
 	if err := viper.Unmarshal(&config); err != nil {
         return nil, err
     }
-
 	return &config, nil
-
 }

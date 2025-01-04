@@ -16,6 +16,7 @@ func (r *QuestionRepository) Create(question models.Question) error{
 	return r.db.Create(question).Error
 }
 
+
 func(r *QuestionRepository) GetRandom() (*models.Question, error){
 	var question models.Question
 	

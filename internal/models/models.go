@@ -15,11 +15,10 @@ type User struct{
 }
 
 //we will create room
-
 type Room struct{
 	ID uuid.UUID	`gorm:"type:UUID;primary_key"`
 	Code string	`gorm:"unique;not null"`
-	Status string `gorm:"not null"`
+	Status string `gorm:"not null"`	//waiting playing ended
 	CreatedAt time.Time
 	EndedAt	*time.Time
 	CreatedBy	uuid.UUID	`gorm:"type:UUID;not null"`
