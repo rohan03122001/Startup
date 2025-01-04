@@ -19,13 +19,12 @@ func (r *QuestionRepository) Create(question models.Question) error{
 
 func(r *QuestionRepository) GetRandom() (*models.Question, error){
 	var question models.Question
-	
 	if err:= r.db.Order("RANDOM()").First(&question).Error; err!=nil{
 		return nil, err
 	}
-
 	return &question, nil
 }
+
 
 // GetByCategory gets questions from a specific category
 func (r *QuestionRepository) GetByCategory(category string) ([]models.Question, error) {

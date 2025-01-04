@@ -39,7 +39,6 @@ type Question struct{
 	CreatedAt time.Time
 }
 
-
 type GameRound struct{
 	ID uuid.UUID	`gorm:"type:UUID;primary_key"`
 	RoomID	uuid.UUID `gorm:"type:UUID;not null"`

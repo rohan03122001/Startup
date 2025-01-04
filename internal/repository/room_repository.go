@@ -20,12 +20,11 @@ func(r *RoomRepository) GetRoomByCode(code int) (*models.Room, error){
 	if err:= r.db.First(&room,"code=?",code).Error; err!=nil{
 		return nil, err
 	}
-
 	return &room, nil
 }
 
-//Get Active Rooms
 
+//Get Active Rooms
 func(r *RoomRepository) GetActive() ([]models.Room, error){
 	var rooms []models.Room
 

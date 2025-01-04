@@ -3,7 +3,7 @@ package websocket
 import "sync"
 
 type Hub struct {
-	//Map of all active rooms -> map of room1:{string:&client{}}
+	//Map of all active rooms -> map of room1:{string:&client{}}rooms={room1:{rohan}, room2:anant}
 	// rooms = {
 	// 	"room1": {
 	// 		"client1": &Client{
@@ -43,7 +43,7 @@ type Hub struct {
 	unregister chan *Client
 
 	//Game Evenet
-	event chan *GameEvent
+	events chan *GameEvent
 }
 
 type GameEvent struct{
@@ -57,7 +57,7 @@ func NewHub() *Hub{
 		rooms: make(map[string]map[string]*Client),
 		register: make(chan *Client),
 		unregister: make(chan *Client),
-		event: make(chan *GameEvent),
+		events: make(chan *GameEvent),
 	}
 }
 
@@ -65,7 +65,12 @@ func(h *Hub)Run(){
 	for{
 		select{
 		case client := <-h.register:
-														//TODOOOOOOOOOOOOO
+			h.handleRegister(client)
+		case client := <-h.unregister:
+			h.handleUnregister(client)
+		
+		case event := <-h.events:
+			h.handleEvent(event)
 		}
 	}
 }
@@ -86,10 +91,17 @@ func(h *Hub)handleRegister(client *Client){
 	//add client
 	h.rooms[client.RoomID][client.ID] = client
 
-	
-	
-	//notify others about player joining									TODO
+	//h.roooms["room1"][rohan[1]] = rohan
+	//notify others about player joining	except player itself							
+	h.broadcastToRoom(client.RoomID, &GameEvent{
+		Type: "player_joined",
+		RoomID: client.RoomID,
+		Data: map[string]string{
+			"player_id": client.ID,
+		},
+	},client.ID)
 }
+
 
 
 func(h *Hub)handleUnregister(client *Client){
@@ -106,7 +118,13 @@ func(h *Hub)handleUnregister(client *Client){
 			if len(room) == 0 {
 				delete(h.rooms, client.RoomID)
 			} else {
-				//TODO notify others about client leaving
+				h.broadcastToRoom(client.RoomID,&GameEvent{
+					Type :"player_left",
+					RoomID: client.RoomID,
+					Data: map[string]string{
+						"player_id":client.ID,
+					},
+				},"")
 			}
 		}
 	}
@@ -124,8 +142,31 @@ func (h *Hub)broadcastToRoom(roomID string, event *GameEvent, excludeClientID st
 	if room, exists := h.rooms[roomID]; exists{
 		for clientID, client := range room{
 			if clientID != excludeClientID{
-	
+				select{
+				case client.send <- event:
+					//msg sent successfully
+				default:
+					close(client.send)
+					delete(room, clientID)
+				}
 			}
 		}
+	}
+}
+
+
+func (h *Hub) BroadbcastQuestion(roomID string, question interface{}){
+	h.events <- &GameEvent{
+		Type: "new_question",
+		RoomID: roomID,
+		Data: question,
+	}
+}
+
+func(h *Hub) BroadcastResult(roomID string, result interface{}){
+	h.events <- &GameEvent{
+		Type: "round_result",
+		RoomID: roomID,
+		Data: result,
 	}
 }
