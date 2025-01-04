@@ -1,4 +1,4 @@
-package websocket
+package websockets
 
 import "sync"
 
@@ -31,19 +31,19 @@ type Hub struct {
 	// 		},
 	// 	},
 	//}
-	rooms map[string]map[string]*Client
+	Rooms map[string]map[string]*Client
 
 	//Protect Access
 	mu sync.RWMutex
 
 	//Register
-	register chan *Client
+	Register chan *Client
 
 	//Unregister
-	unregister chan *Client
+	Unregister chan *Client
 
 	//Game Evenet
-	events chan *GameEvent
+	Events chan *GameEvent
 }
 
 type GameEvent struct{
@@ -54,22 +54,22 @@ type GameEvent struct{
 
 func NewHub() *Hub{
 	return &Hub{
-		rooms: make(map[string]map[string]*Client),
-		register: make(chan *Client),
-		unregister: make(chan *Client),
-		events: make(chan *GameEvent),
+		Rooms: make(map[string]map[string]*Client),
+		Register: make(chan *Client),
+		Unregister: make(chan *Client),
+		Events: make(chan *GameEvent),
 	}
 }
 
 func(h *Hub)Run(){
 	for{
 		select{
-		case client := <-h.register:
+		case client := <-h.Register:
 			h.handleRegister(client)
-		case client := <-h.unregister:
+		case client := <-h.Unregister:
 			h.handleUnregister(client)
 		
-		case event := <-h.events:
+		case event := <-h.Events:
 			h.handleEvent(event)
 		}
 	}
@@ -82,14 +82,14 @@ func(h *Hub)handleRegister(client *Client){
 
 	//initialise if room doesnt exists 
 	//we check if the roomID in the client we received already exists in our outer map rooms[roomID] 
-	if _ , exists := h.rooms[client.RoomID]; exists{
-		h.rooms[client.RoomID] = make(map[string]*Client)
+	if _ , exists := h.Rooms[client.RoomID]; exists{
+		h.Rooms[client.RoomID] = make(map[string]*Client)
 	}
 
 
 	//its a map of room(string) : client(string) :(client){ which also has a reference to its room}
 	//add client
-	h.rooms[client.RoomID][client.ID] = client
+	h.Rooms[client.RoomID][client.ID] = client
 
 	//h.roooms["room1"][rohan[1]] = rohan
 	//notify others about player joining	except player itself							
@@ -109,14 +109,14 @@ func(h *Hub)handleUnregister(client *Client){
 	defer h.mu.Unlock()
 
 	//check room exist
-	if room, exists := h.rooms[client.RoomID]; exists{
+	if room, exists := h.Rooms[client.RoomID]; exists{
 		if _, ok:= room[client.ID]; ok{
 			delete(room, client.ID)
 			close(client.send)
 
 
 			if len(room) == 0 {
-				delete(h.rooms, client.RoomID)
+				delete(h.Rooms, client.RoomID)
 			} else {
 				h.broadcastToRoom(client.RoomID,&GameEvent{
 					Type :"player_left",
@@ -139,7 +139,7 @@ func (h *Hub)handleEvent(event *GameEvent){
 }
 
 func (h *Hub)broadcastToRoom(roomID string, event *GameEvent, excludeClientID string){
-	if room, exists := h.rooms[roomID]; exists{
+	if room, exists := h.Rooms[roomID]; exists{
 		for clientID, client := range room{
 			if clientID != excludeClientID{
 				select{
@@ -156,7 +156,7 @@ func (h *Hub)broadcastToRoom(roomID string, event *GameEvent, excludeClientID st
 
 
 func (h *Hub) BroadbcastQuestion(roomID string, question interface{}){
-	h.events <- &GameEvent{
+	h.Events <- &GameEvent{
 		Type: "new_question",
 		RoomID: roomID,
 		Data: question,
@@ -164,7 +164,7 @@ func (h *Hub) BroadbcastQuestion(roomID string, question interface{}){
 }
 
 func(h *Hub) BroadcastResult(roomID string, result interface{}){
-	h.events <- &GameEvent{
+	h.Events <- &GameEvent{
 		Type: "round_result",
 		RoomID: roomID,
 		Data: result,

@@ -1,4 +1,4 @@
-package websocket
+package websockets
 
 import (
 	"log"
@@ -41,9 +41,9 @@ func NewClient(hub *Hub, conn *websocket.Conn, roomID string, id string) *Client
 }
 
 
-func(c *Client)readPump(){
+func(c *Client)ReadPump(){
 	defer func ()  {
-		c.hub.unregister <- c
+		c.hub.Unregister <- c
 		c.conn.Close()
 	}()
 
@@ -68,12 +68,12 @@ func(c *Client)readPump(){
 
 		gameEvent.RoomID = c.RoomID
 
-		c.hub.events <- &gameEvent
+		c.hub.Events <- &gameEvent
 	}
 }
 
 
-func (c *Client) writePump(){
+func (c *Client) WritePump(){
 	ticker := time.NewTicker(pingPeriod)
 
 	defer func ()  {
