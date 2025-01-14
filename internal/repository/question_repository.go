@@ -35,6 +35,17 @@ func (r *QuestionRepository) GetByCategory(category string) ([]models.Question, 
     return questions, nil
 }
 
+
+func (r *QuestionRepository) GetByID(Id string) (*models.Question, error) {
+    var questions *models.Question
+ 
+	if err:= r.db.First(&questions, "id=?", Id).Error; err!=nil{
+		return nil,err
+	}
+
+    return questions, nil
+}
+
 // GetByDifficulty gets questions of a specific difficulty
 func (r *QuestionRepository) GetByDifficulty(difficulty int) ([]models.Question, error) {
     var questions []models.Question

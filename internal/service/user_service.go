@@ -42,3 +42,20 @@ func(s *UserService)CreateUser(username string)(*models.User, error){
 }
 
 
+func(s *UserService)GetUserProfile(userID string)(*models.User, error){
+	return s.userRepo.GetByID(userID)
+}
+
+// ValidateUsername checks if username is available
+func (s *UserService) ValidateUsername(username string) error {
+    if len(username) < 3 || len(username) > 20 {
+        return errors.New("username must be between 3 and 20 characters")
+    }
+
+    existing, _ := s.userRepo.GetByUsername(username)
+    if existing != nil {
+        return errors.New("username already taken")
+    }
+
+    return nil
+}

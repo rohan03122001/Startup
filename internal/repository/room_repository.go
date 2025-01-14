@@ -14,7 +14,7 @@ func (r *RoomRepository) CreateRoom(room *models.Room) error{
 	return r.db.Create(room).Error
 }
 
-func(r *RoomRepository) GetRoomByCode(code int) (*models.Room, error){
+func(r *RoomRepository) GetRoomByCode(code string) (*models.Room, error){
 	var room models.Room
 
 	if err:= r.db.First(&room,"code=?",code).Error; err!=nil{
@@ -44,4 +44,10 @@ func(r *RoomRepository) UpdateStatus(RoomID string, status string) error{
 // Delete removes a room
 func (r *RoomRepository) Delete(id string) error {
     return r.db.Delete(&models.Room{}, "id = ?", id).Error
+}
+
+func (r *RoomRepository) IncrementRound(roomID string) error {
+    return r.db.Model(&models.Room{}).
+        Where("id = ?", roomID).
+        UpdateColumn("current_round", r.db.Raw("current_round + 1")).Error
 }

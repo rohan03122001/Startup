@@ -1,3 +1,5 @@
+// internal/handlers/websocket_handler.go
+
 package handlers
 
 import (
@@ -11,60 +13,55 @@ import (
 )
 
 var upgrader = websocket.Upgrader{
-	ReadBufferSize: 1024,
-	WriteBufferSize: 1024,
-	CheckOrigin: func(r *http.Request) bool {
-		return true
-		//need to work for production
-	},
+    ReadBufferSize:  1024,
+    WriteBufferSize: 1024,
+    CheckOrigin: func(r *http.Request) bool {
+        // In production, check origin
+        return true
+    },
 }
 
-
-type WebSocketHandler struct{
-	hub *websockets.Hub
+type WebSocketHandler struct {
+    hub          *websockets.Hub
+    gameHandler  *GameHandler
 }
 
-func NewWebSocketHandler(hub *websockets.Hub) *WebSocketHandler{
-	return &WebSocketHandler{
-		hub: hub,
-	}
+func NewWebSocketHandler(hub *websockets.Hub, gameHandler *GameHandler) *WebSocketHandler {
+    return &WebSocketHandler{
+        hub:         hub,
+        gameHandler: gameHandler,
+    }
 }
 
+// HandleConnection handles new WebSocket connections
+func (h *WebSocketHandler) HandleConnection(c *gin.Context) {
+    // Upgrade initial HTTP connection to WebSocket
+    conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
+    if err != nil {
+        log.Printf("Failed to upgrade connection: %v", err)
+        return
+    }
 
-//Handle HTTP to upgrade
+    // Generate unique client ID
+    clientID := uuid.New().String()
 
-func (h *WebSocketHandler)HandleHTTP(c *gin.Context){	
-	roomID := c.Query("room")
-	if roomID == ""{
-		 c.JSON(http.StatusBadRequest, gin.H{
-			"error": "room ID Required",
-		})
-		return
-	}
+    // Create new client
+    client := websocket.NewClient(h.hub, conn, "", clientID)
 
+    // Set message handler
+    client.SetMessageHandler(h.gameHandler.HandleMessage)
 
-	//Upgrade Connection to websocker
+    // Register client with hub
+    h.hub.register <- client
 
-	conn, err := upgrader.Upgrade(c.Writer, c.Request,nil)
-	if err!= nil{
-		log.Printf("Failed to upgrade Connection %v", err)
-		return
-	}
+    // Start client read/write pumps
+    go client.ReadPump()
+    go client.WritePump()
 
-	//Generate CLIENT ID FOR THE CONNECTION WHICH UPGRADED
+    log.Printf("New WebSocket connection established: Client %s", clientID)
+}
 
-	clientID := uuid.New().String()
-
-	//create new client
-	client := websockets.NewClient(h.hub, conn, roomID, clientID)
-
-	// register with hub
-	h.hub.Register <- client	
-
-	//start go routines for read and write pump
-
-	go client.ReadPump()
-	go client.WritePump()
-
-	log.Printf("New WebSocket connection: Client %s joined Room %s", clientID, roomID)
+// RegisterRoutes registers the WebSocket routes with Gin
+func (h *WebSocketHandler) RegisterRoutes(router *gin.Engine) {
+    router.GET("/ws", h.HandleConnection)
 }
