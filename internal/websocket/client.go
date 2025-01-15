@@ -16,6 +16,9 @@ const (
     maxMessageSize = 512
 )
 
+// MessageHandler is a function type for handling incoming messages
+type MessageHandler func(*Client, []byte) error
+
 // Client represents a connected WebSocket client
 type Client struct {
     hub *Hub
@@ -34,6 +37,9 @@ type Client struct {
 
     // Client's username
     Username string
+
+    // Message handler function
+    messageHandler MessageHandler
 }
 
 func NewClient(hub *Hub, conn *websocket.Conn, roomID string, id string) *Client {
@@ -44,6 +50,10 @@ func NewClient(hub *Hub, conn *websocket.Conn, roomID string, id string) *Client
         RoomID: roomID,
         ID:     id,
     }
+}
+
+func (c *Client) SetMessageHandler(handler MessageHandler) {
+    c.messageHandler = handler
 }
 
 // ReadPump pumps messages from the WebSocket connection to the hub
@@ -61,8 +71,7 @@ func (c *Client) ReadPump() {
     })
 
     for {
-        var event GameEvent
-        err := c.conn.ReadJSON(&event)
+        _, message, err := c.conn.ReadMessage()
         if err != nil {
             if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
                 log.Printf("error: %v", err)
@@ -70,12 +79,12 @@ func (c *Client) ReadPump() {
             break
         }
 
-        // Add room ID to event if not set
-        if event.RoomID == "" {
-            event.RoomID = c.RoomID
+        // Handle message using custom handler if set
+        if c.messageHandler != nil {
+            if err := c.messageHandler(c, message); err != nil {
+                log.Printf("error handling message: %v", err)
+            }
         }
-
-        c.hub.Broadcast <- &event
     }
 }
 

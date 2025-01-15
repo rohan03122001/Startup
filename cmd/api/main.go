@@ -16,6 +16,7 @@ import (
 	"github.com/rohan03122001/quizzing/internal/handlers"
 	"github.com/rohan03122001/quizzing/internal/repository"
 	"github.com/rohan03122001/quizzing/internal/service"
+	"github.com/rohan03122001/quizzing/internal/websocket"
 )
 
 func main() {
@@ -55,6 +56,7 @@ func main() {
     gameHandler := handlers.NewGameHandler(gameService, roomService, hub)
     httpHandler := handlers.NewHTTPHandler(roomService)
     wsHandler := websocket.NewHandler(hub)
+    wsHandler.SetMessageHandler(gameHandler.HandleMessage)
 
     // Set up router
     gin.SetMode(cfg.Server.Mode)
@@ -72,7 +74,7 @@ func main() {
         c.Next()
     })
 
-    // Register routes
+    // Register HTTP routes
     httpHandler.RegisterRoutes(router)
     
     // WebSocket route
@@ -86,6 +88,7 @@ func main() {
 
     // Start server in goroutine
     go func() {
+        log.Printf("Server starting on port %s", cfg.Server.Port)
         if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
             log.Fatalf("Failed to start server: %v", err)
         }

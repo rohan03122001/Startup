@@ -60,60 +60,67 @@ func (h *Hub) Run() {
 
 func (h *Hub) handleRegister(client *Client) {
     h.mu.Lock()
-    // Initialize room if it doesn't exist
+    defer h.mu.Unlock()
+    
     if _, exists := h.rooms[client.RoomID]; !exists {
         h.rooms[client.RoomID] = make(map[string]*Client)
     }
     h.rooms[client.RoomID][client.ID] = client
-    h.mu.Unlock()
 }
 
 func (h *Hub) handleUnregister(client *Client) {
     h.mu.Lock()
+    defer h.mu.Unlock()
+
     if room, exists := h.rooms[client.RoomID]; exists {
         if _, ok := room[client.ID]; ok {
             delete(room, client.ID)
             close(client.send)
-            // Remove room if empty
+            
             if len(room) == 0 {
                 delete(h.rooms, client.RoomID)
             }
         }
     }
-    h.mu.Unlock()
 }
 
 func (h *Hub) handleBroadcast(event *GameEvent) {
     h.mu.RLock()
+    defer h.mu.RUnlock()
+
     if room, exists := h.rooms[event.RoomID]; exists {
         for _, client := range room {
             select {
             case client.send <- event:
                 // Message sent successfully
             default:
-                // Client's buffer is full
                 close(client.send)
-                delete(room, client.ID)
+                go func(c *Client) {
+                    h.Unregister <- c
+                }(client)
             }
         }
     }
-    h.mu.RUnlock()
 }
 
-// BroadcastToRoom sends a message to all clients in a room
-func (h *Hub) BroadcastToRoom(roomID string, event GameEvent) {
-    event.RoomID = roomID
-    h.Broadcast <- &event
-}
-
+// SendToClient sends a message to a specific client
 func (h *Hub) SendToClient(client *Client, event GameEvent) error {
     select {
     case client.send <- &event:
         return nil
     default:
         close(client.send)
+        go func() {
+            h.Unregister <- client
+        }()
         return fmt.Errorf("client send buffer full")
     }
+}
+
+// BroadcastToRoom sends a message to all clients in a room
+func (h *Hub) BroadcastToRoom(roomID string, event GameEvent) {
+    event.RoomID = roomID
+    h.Broadcast <- &event
 }
 
 // GetPlayerCount returns number of players in a room

@@ -15,20 +15,26 @@ var upgrader = websocket.Upgrader{
     ReadBufferSize:  1024,
     WriteBufferSize: 1024,
     CheckOrigin: func(r *http.Request) bool {
-        // In production, implement proper origin check
-        return true
+        return true // In production, implement proper origin check
     },
 }
 
 type Handler struct {
     hub *Hub
+    messageHandler MessageHandler
 }
 
 func NewHandler(hub *Hub) *Handler {
-    return &Handler{hub: hub}
+    return &Handler{
+        hub: hub,
+    }
 }
 
-// HandleConnection handles WebSocket connections
+func (h *Handler) SetMessageHandler(handler MessageHandler) {
+    h.messageHandler = handler
+}
+
+// HandleConnection handles new WebSocket connections
 func (h *Handler) HandleConnection(c *gin.Context) {
     // Upgrade HTTP connection to WebSocket
     conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
@@ -43,7 +49,12 @@ func (h *Handler) HandleConnection(c *gin.Context) {
     // Create new client
     client := NewClient(h.hub, conn, "", clientID)
 
-    // Register with hub
+    // Set message handler
+    if h.messageHandler != nil {
+        client.SetMessageHandler(h.messageHandler)
+    }
+
+    // Register client with hub
     h.hub.Register <- client
 
     // Start client read/write routines
