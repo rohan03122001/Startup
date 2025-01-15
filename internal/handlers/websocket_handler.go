@@ -1,6 +1,6 @@
-// internal/websocket/handler.go
+// internal/handlers/websocket_handler.go
 
-package websocket
+package handlers
 
 import (
 	"log"
@@ -9,6 +9,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
+	ws "github.com/rohan03122001/quizzing/internal/websocket"
+	
 )
 
 var upgrader = websocket.Upgrader{
@@ -19,23 +21,20 @@ var upgrader = websocket.Upgrader{
     },
 }
 
-type Handler struct {
-    hub *Hub
-    messageHandler MessageHandler
+type WebSocketHandler struct {
+    hub         *ws.Hub
+    gameHandler *GameHandler
 }
 
-func NewHandler(hub *Hub) *Handler {
-    return &Handler{
-        hub: hub,
+func NewWebSocketHandler(hub *ws.Hub, gameHandler *GameHandler) *WebSocketHandler {
+    return &WebSocketHandler{
+        hub:         hub,
+        gameHandler: gameHandler,
     }
 }
 
-func (h *Handler) SetMessageHandler(handler MessageHandler) {
-    h.messageHandler = handler
-}
-
 // HandleConnection handles new WebSocket connections
-func (h *Handler) HandleConnection(c *gin.Context) {
+func (h *WebSocketHandler) HandleConnection(c *gin.Context) {
     // Upgrade HTTP connection to WebSocket
     conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
     if err != nil {
@@ -43,23 +42,26 @@ func (h *Handler) HandleConnection(c *gin.Context) {
         return
     }
 
-    // Generate client ID
+    // Generate unique client ID
     clientID := uuid.New().String()
 
     // Create new client
-    client := NewClient(h.hub, conn, "", clientID)
+    client := ws.NewClient(h.hub, conn, "", clientID) // Empty roomID initially
 
     // Set message handler
-    if h.messageHandler != nil {
-        client.SetMessageHandler(h.messageHandler)
-    }
+    client.SetMessageHandler(h.gameHandler.HandleMessage)
 
-    // Register client with hub
+    // Register with hub
     h.hub.Register <- client
 
-    // Start client read/write routines
+    // Start read/write pumps
     go client.ReadPump()
     go client.WritePump()
 
     log.Printf("New WebSocket connection established: Client %s", clientID)
+}
+
+// RegisterRoutes registers the WebSocket endpoint
+func (h *WebSocketHandler) RegisterRoutes(r *gin.Engine) {
+    r.GET("/ws", h.HandleConnection)
 }

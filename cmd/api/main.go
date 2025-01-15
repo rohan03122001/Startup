@@ -18,7 +18,6 @@ import (
 	"github.com/rohan03122001/quizzing/internal/service"
 	"github.com/rohan03122001/quizzing/internal/websocket"
 )
-
 func main() {
     // Load configuration
     cfg, err := config.LoadConfig()
@@ -26,59 +25,52 @@ func main() {
         log.Fatalf("Failed to load config: %v", err)
     }
 
-    // Initialize database
-    db, err := repository.NewDatabase(
-        cfg.Database.Host,
-        cfg.Database.Port,
-        cfg.Database.User,
-        cfg.Database.Password,
-        cfg.Database.DBName,
-        cfg.Database.SSLMode,
-    )
-    if err != nil {
-        log.Fatalf("Failed to connect to database: %v", err)
+    // Set Gin mode
+    if cfg.Server.Mode == "development" {
+        gin.SetMode(gin.DebugMode)
+    } else if cfg.Server.Mode == "production" {
+        gin.SetMode(gin.ReleaseMode)
+    } else {
+        gin.SetMode(gin.DebugMode) // Default to debug mode
     }
+
+    // Initialize database
+    db, err := repository.NewDatabase(&repository.DBConfig{
+        Host:     cfg.Database.Host,
+        Port:     cfg.Database.Port,
+        User:     cfg.Database.User,
+        Password: cfg.Database.Password,
+        DBName:   cfg.Database.DBName,
+        SSLMode:  cfg.Database.SSLMode,
+    })
+    if err != nil {
+        log.Fatalf("Failed to initialize database: %v", err)
+    }
+
+    // Initialize WebSocket hub
+    hub := websocket.NewHub()
+    go hub.Run()
 
     // Initialize repositories
     roomRepo := repository.NewRoomRepository(db)
     questionRepo := repository.NewQuestionRepository(db)
     roundRepo := repository.NewGameRoundRepository(db)
 
-    // Initialize WebSocket hub
-    hub := websocket.NewHub()
-    go hub.Run()
-
     // Initialize services
     roomService := service.NewRoomService(roomRepo, hub)
     gameService := service.NewGameService(roomRepo, questionRepo, roundRepo, hub)
 
     // Initialize handlers
-    gameHandler := handlers.NewGameHandler(gameService, roomService, hub)
     httpHandler := handlers.NewHTTPHandler(roomService)
-    wsHandler := websocket.NewHandler(hub)
-    wsHandler.SetMessageHandler(gameHandler.HandleMessage)
+    gameHandler := handlers.NewGameHandler(gameService, roomService, hub)
+    wsHandler := handlers.NewWebSocketHandler(hub, gameHandler)
 
-    // Set up router
-    gin.SetMode(cfg.Server.Mode)
+    // Setup Gin router
     router := gin.Default()
 
-    // CORS middleware
-    router.Use(func(c *gin.Context) {
-        c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
-        c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-        if c.Request.Method == "OPTIONS" {
-            c.AbortWithStatus(204)
-            return
-        }
-        c.Next()
-    })
-
-    // Register HTTP routes
+    // Register routes
     httpHandler.RegisterRoutes(router)
-    
-    // WebSocket route
-    router.GET("/ws", wsHandler.HandleConnection)
+    wsHandler.RegisterRoutes(router)
 
     // Create server
     srv := &http.Server{
@@ -88,7 +80,7 @@ func main() {
 
     // Start server in goroutine
     go func() {
-        log.Printf("Server starting on port %s", cfg.Server.Port)
+        log.Printf("Server starting on port %s in %s mode", cfg.Server.Port, cfg.Server.Mode)
         if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
             log.Fatalf("Failed to start server: %v", err)
         }

@@ -4,6 +4,7 @@ package service
 
 import (
 	"errors"
+	"log"
 	"math/rand"
 
 	"github.com/rohan03122001/quizzing/internal/models"
@@ -19,7 +20,7 @@ type RoomService struct {
 func NewRoomService(roomRepo *repository.RoomRepository, hub *websocket.Hub) *RoomService {
     return &RoomService{
         roomRepo: roomRepo,
-        hub:     hub,
+        hub:      hub,
     }
 }
 
@@ -39,7 +40,7 @@ func (s *RoomService) CreateRoom(maxPlayers int) (*models.Room, error) {
     var roomCode string
     for i := 0; i < 5; i++ { // Try 5 times
         roomCode = s.generateRoomCode()
-        existing, _ := s.roomRepo.GetRoomByCode(roomCode)
+        existing, _ := s.roomRepo.GetByCode(roomCode)
         if existing == nil {
             break
         }
@@ -53,6 +54,7 @@ func (s *RoomService) CreateRoom(maxPlayers int) (*models.Room, error) {
         MaxRounds:  5,   // 5 rounds per game
     }
 
+    log.Printf("Creating new room with code: %s", roomCode)
     if err := s.roomRepo.CreateRoom(room); err != nil {
         return nil, err
     }
@@ -61,28 +63,40 @@ func (s *RoomService) CreateRoom(maxPlayers int) (*models.Room, error) {
 }
 
 // JoinRoom handles a player joining a room
-func (s *RoomService) JoinRoom(roomCode string) (*models.Room, error) {
-    room, err := s.roomRepo.GetRoomByCode(roomCode)
+// Update JoinRoom method
+func (s *RoomService) JoinRoom(roomCode string, playerID string) (*models.Room, error) {
+    log.Printf("Player %s trying to join room %s", playerID, roomCode)
+    
+    room, err := s.roomRepo.GetByCode(roomCode)
     if err != nil {
+        log.Printf("Room not found: %s", roomCode)
         return nil, errors.New("room not found")
     }
 
     if room.Status != "waiting" {
+        log.Printf("Room %s is not accepting players (status: %s)", roomCode, room.Status)
         return nil, errors.New("game already in progress")
     }
 
-    // Check if room is full
+    // Check room capacity
     currentPlayers := s.hub.GetPlayerCount(room.ID.String())
     if currentPlayers >= room.MaxPlayers {
+        log.Printf("Room %s is full (%d/%d players)", roomCode, currentPlayers, room.MaxPlayers)
         return nil, errors.New("room is full")
     }
 
+    log.Printf("Player %s successfully joined room %s", playerID, roomCode)
     return room, nil
+}
+
+// Add method to get room by ID (needed for game handler)
+func (s *RoomService) GetRoomByID(roomID string) (*models.Room, error) {
+    return s.roomRepo.GetByID(roomID)
 }
 
 // StartGame initiates the game for a room
 func (s *RoomService) StartGame(roomCode string) error {
-    room, err := s.roomRepo.GetRoomByCode(roomCode)
+    room, err := s.roomRepo.GetByCode(roomCode)
     if err != nil {
         return errors.New("room not found")
     }
@@ -91,16 +105,17 @@ func (s *RoomService) StartGame(roomCode string) error {
         return errors.New("game already started")
     }
 
-    // Need at least 2 players to start
     currentPlayers := s.hub.GetPlayerCount(room.ID.String())
     if currentPlayers < 2 {
         return errors.New("need at least 2 players to start")
     }
 
+    log.Printf("Starting game in room %s with %d players", roomCode, currentPlayers)
     return s.roomRepo.UpdateStatus(room.ID.String(), "playing")
 }
 
 // GetActiveRooms returns all rooms waiting for players
 func (s *RoomService) GetActiveRooms() ([]models.Room, error) {
+    log.Println("Fetching active rooms")
     return s.roomRepo.GetActive()
 }

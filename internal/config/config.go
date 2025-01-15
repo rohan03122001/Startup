@@ -12,17 +12,17 @@ type Config struct {
 }
 
 type ServerConfig struct {
-    Port string
-    Mode string
+    Port string `mapstructure:"port"`
+    Mode string `mapstructure:"mode"`
 }
 
 type DatabaseConfig struct {
-    Host     string
-    Port     string
-    User     string
-    Password string
-    DBName   string
-    SSLMode  string
+    Host     string `mapstructure:"host"`
+    Port     string `mapstructure:"port"`
+    User     string `mapstructure:"user"`
+    Password string `mapstructure:"password"`
+    DBName   string `mapstructure:"dbname"`
+    SSLMode  string `mapstructure:"sslmode"`
 }
 
 func LoadConfig() (*Config, error) {
@@ -31,7 +31,7 @@ func LoadConfig() (*Config, error) {
     viper.AddConfigPath(".")
     viper.AddConfigPath("./config")
 
-    // Default values
+    // Set defaults
     viper.SetDefault("server.port", "8080")
     viper.SetDefault("server.mode", "development")
     

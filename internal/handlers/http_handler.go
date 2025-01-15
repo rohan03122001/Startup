@@ -19,24 +19,18 @@ func NewHTTPHandler(roomService *service.RoomService) *HTTPHandler {
     }
 }
 
-type CreateRoomResponse struct {
-    RoomCode   string `json:"room_code"`
-    MaxPlayers int    `json:"max_players"`
-    RoundTime  int    `json:"round_time"`
-}
-
-// CreateRoom creates a new game room
+// CreateRoom handles room creation
 func (h *HTTPHandler) CreateRoom(c *gin.Context) {
-    room, err := h.roomService.CreateRoom(10) // Default 10 players
+    room, err := h.roomService.CreateRoom(10) // Default 10 players max
     if err != nil {
         c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
         return
     }
 
-    c.JSON(http.StatusCreated, CreateRoomResponse{
-        RoomCode:   room.Code,
-        MaxPlayers: room.MaxPlayers,
-        RoundTime:  room.RoundTime,
+    c.JSON(http.StatusCreated, gin.H{
+        "room_code": room.Code,
+        "max_players": room.MaxPlayers,
+        "round_time": room.RoundTime,
     })
 }
 
@@ -51,8 +45,19 @@ func (h *HTTPHandler) GetActiveRooms(c *gin.Context) {
     c.JSON(http.StatusOK, rooms)
 }
 
-// RegisterRoutes sets up HTTP routes
 func (h *HTTPHandler) RegisterRoutes(r *gin.Engine) {
+    // CORS middleware
+    r.Use(func(c *gin.Context) {
+        c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
+        c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+        if c.Request.Method == "OPTIONS" {
+            c.AbortWithStatus(204)
+            return
+        }
+        c.Next()
+    })
+
     api := r.Group("/api")
     {
         api.POST("/rooms", h.CreateRoom)
