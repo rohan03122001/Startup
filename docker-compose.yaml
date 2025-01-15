@@ -2,14 +2,15 @@ version: "3.8"
 services:
   postgres:
     image: postgres:latest
+    container_name: quiz_postgres
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: quiz_app
     ports:
-      - "5434:5432" # Map container's 5432 to host's 5434
+      - "5434:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - pgdata:/var/lib/postgresql/data
 
 volumes:
-  postgres_data:
+  pgdata:

@@ -16,14 +16,14 @@ const (
     // Time allowed to read the next pong message from the peer
     pongWait = 60 * time.Second
 
-    // Send pings to peer with this period
+    // Send pings to peer with this period (must be less than pongWait)
     pingPeriod = (pongWait * 9) / 10
 
     // Maximum message size allowed from peer
     maxMessageSize = 512
 )
 
-// Client represents a connected websocket client
+// Client represents a connected WebSocket client
 type Client struct {
     // The websocket connection
     conn *websocket.Conn
@@ -83,7 +83,7 @@ func (c *Client) ReadPump() {
         _, message, err := c.conn.ReadMessage()
         if err != nil {
             if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-                log.Printf("error: %v", err)
+                log.Printf("Unexpected close error: %v", err)
             }
             break
         }
@@ -92,6 +92,11 @@ func (c *Client) ReadPump() {
         if c.messageHandler != nil {
             if err := c.messageHandler(c, message); err != nil {
                 log.Printf("Error handling message from client %s: %v", c.ID, err)
+                // Send error back to client
+                c.hub.SendToClient(c, GameEvent{
+                    Type:  "error",
+                    Error: err.Error(),
+                })
             }
         }
     }
@@ -115,6 +120,7 @@ func (c *Client) WritePump() {
                 return
             }
 
+            // Write the event as JSON
             err := c.conn.WriteJSON(event)
             if err != nil {
                 log.Printf("Error writing message to client %s: %v", c.ID, err)
@@ -124,8 +130,15 @@ func (c *Client) WritePump() {
         case <-ticker.C:
             c.conn.SetWriteDeadline(time.Now().Add(writeWait))
             if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+                log.Printf("Error sending ping to client %s: %v", c.ID, err)
                 return
             }
         }
     }
+}
+
+// Close closes the client connection
+func (c *Client) Close() {
+    c.hub.Unregister <- c
+    c.conn.Close()
 }
