@@ -1,52 +1,28 @@
 // internal/config/config.go
-
 package config
 
-import (
-	"github.com/spf13/viper"
-)
-
 type Config struct {
-    Server   ServerConfig
-    Database DatabaseConfig
+    Server *Server
+    Database *Database
 }
-
-type ServerConfig struct {
-    Port string `mapstructure:"port"`
-    Mode string `mapstructure:"mode"`
+type Server struct {
+    Address string
 }
-
-type DatabaseConfig struct {
-    Host     string `mapstructure:"host"`
-    Port     string `mapstructure:"port"`
-    User     string `mapstructure:"user"`
-    Password string `mapstructure:"password"`
-    DBName   string `mapstructure:"dbname"`
-    SSLMode  string `mapstructure:"sslmode"`
+type Database struct {
+    Host     string
+    Port     int
+    User     string
+    Password string
+    DBName   string
 }
-
-func LoadConfig() (*Config, error) {
-    viper.SetConfigName("config")
-    viper.SetConfigType("yaml")
-    viper.AddConfigPath(".")
-    viper.AddConfigPath("./config")
-
-    // Set defaults
-    viper.SetDefault("server.port", "8080")
-    viper.SetDefault("server.mode", "development")
-    
-    viper.SetDefault("database.host", "localhost")
-    viper.SetDefault("database.port", "5432")
-    viper.SetDefault("database.sslmode", "disable")
-
-    if err := viper.ReadInConfig(); err != nil {
-        return nil, err
-    }
-
-    var config Config
-    if err := viper.Unmarshal(&config); err != nil {
-        return nil, err
-    }
-
-    return &config, nil
+func Load() (*Config, error) {
+    // For now, return default config
+    cfg := &Config{}
+    cfg.Server.Address = ":8080"
+    cfg.Database.Host = "localhost"
+    cfg.Database.Port = 5434
+    cfg.Database.User = "postgres"
+    cfg.Database.Password = "postgres"
+    cfg.Database.DBName = "quiz_app"
+    return cfg, nil
 }
