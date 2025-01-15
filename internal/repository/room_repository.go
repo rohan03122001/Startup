@@ -1,53 +1,42 @@
+// internal/repository/room_repository.go
+
 package repository
 
-import "github.com/rohan03122001/quizzing/internal/models"
+import (
+	"github.com/rohan03122001/quizzing/internal/models"
+)
 
 type RoomRepository struct {
-	db *Database
+    db *Database
 }
 
 func NewRoomRepository(db *Database) *RoomRepository {
-	return &RoomRepository{db: db}
+    return &RoomRepository{db: db}
 }
 
-func (r *RoomRepository) CreateRoom(room *models.Room) error{
-	return r.db.Create(room).Error
+// CreateRoom creates a new room
+func (r *RoomRepository) CreateRoom(room *models.Room) error {
+    return r.db.Create(room).Error
 }
 
-func(r *RoomRepository) GetRoomByCode(code string) (*models.Room, error){
-	var room models.Room
-
-	if err:= r.db.First(&room,"code=?",code).Error; err!=nil{
-		return nil, err
-	}
-	return &room, nil
+// GetRoomByCode finds a room by its code
+func (r *RoomRepository) GetRoomByCode(code string) (*models.Room, error) {
+    var room models.Room
+    err := r.db.Where("code = ?", code).First(&room).Error
+    if err != nil {
+        return nil, err
+    }
+    return &room, nil
 }
 
-
-//Get Active Rooms
-func(r *RoomRepository) GetActive() ([]models.Room, error){
-	var rooms []models.Room
-
-	if err:=r.db.Where("status = ?","waiting").Or("status = ?", "playing").Find(&rooms).Error; err!=nil{
-		return nil, err
-	}
-
-	return rooms, nil
+// UpdateStatus updates a room's status
+func (r *RoomRepository) UpdateStatus(roomID string, status string) error {
+    return r.db.Model(&models.Room{}).Where("id = ?", roomID).Update("status", status).Error
 }
 
-//update Room Status
-func(r *RoomRepository) UpdateStatus(RoomID string, status string) error{
-	return r.db.Model(&models.Room{}).Where("id=?",RoomID).Update("status", status).Error
-}
-
-
-// Delete removes a room
-func (r *RoomRepository) Delete(id string) error {
-    return r.db.Delete(&models.Room{}, "id = ?", id).Error
-}
-
-func (r *RoomRepository) IncrementRound(roomID string) error {
-    return r.db.Model(&models.Room{}).
-        Where("id = ?", roomID).
-        UpdateColumn("current_round", r.db.Raw("current_round + 1")).Error
+// GetActive gets all rooms that are waiting or playing
+func (r *RoomRepository) GetActive() ([]models.Room, error) {
+    var rooms []models.Room
+    err := r.db.Where("status IN (?)", []string{"waiting", "playing"}).Find(&rooms).Error
+    return rooms, err
 }

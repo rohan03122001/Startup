@@ -1,56 +1,33 @@
+// internal/repository/question_repository.go
+
 package repository
 
 import "github.com/rohan03122001/quizzing/internal/models"
 
 type QuestionRepository struct {
-	db *Database
+    db *Database
 }
 
 func NewQuestionRepository(db *Database) *QuestionRepository {
-	return &QuestionRepository{
-		db: db,
-	}
+    return &QuestionRepository{db: db}
 }
 
-func (r *QuestionRepository) Create(question models.Question) error{
-	return r.db.Create(question).Error
-}
-
-
-func(r *QuestionRepository) GetRandom() (*models.Question, error){
-	var question models.Question
-	if err:= r.db.Order("RANDOM()").First(&question).Error; err!=nil{
-		return nil, err
-	}
-	return &question, nil
-}
-
-
-// GetByCategory gets questions from a specific category
-func (r *QuestionRepository) GetByCategory(category string) ([]models.Question, error) {
-    var questions []models.Question
-    if err := r.db.Where("category = ?", category).Find(&questions).Error; err != nil {
+// GetRandom gets a random question
+func (r *QuestionRepository) GetRandom() (*models.Question, error) {
+    var question models.Question
+    err := r.db.Order("RANDOM()").First(&question).Error
+    if err != nil {
         return nil, err
     }
-    return questions, nil
+    return &question, nil
 }
 
-
-func (r *QuestionRepository) GetByID(Id string) (*models.Question, error) {
-    var questions *models.Question
- 
-	if err:= r.db.First(&questions, "id=?", Id).Error; err!=nil{
-		return nil,err
-	}
-
-    return questions, nil
-}
-
-// GetByDifficulty gets questions of a specific difficulty
-func (r *QuestionRepository) GetByDifficulty(difficulty int) ([]models.Question, error) {
-    var questions []models.Question
-    if err := r.db.Where("difficulty = ?", difficulty).Find(&questions).Error; err != nil {
+// GetByID gets a specific question
+func (r *QuestionRepository) GetByID(id string) (*models.Question, error) {
+    var question models.Question
+    err := r.db.First(&question, "id = ?", id).Error
+    if err != nil {
         return nil, err
     }
-    return questions, nil
+    return &question, nil
 }

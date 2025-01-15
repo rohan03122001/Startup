@@ -1,55 +1,52 @@
+// internal/config/config.go
+
 package config
 
-import "github.com/spf13/viper"
+import (
+	"github.com/spf13/viper"
+)
 
 type Config struct {
-	Server   ServerConfig
-	Database Database
-	Redis    RedisConfig
+    Server   ServerConfig
+    Database DatabaseConfig
 }
 
 type ServerConfig struct {
-	Port string
-	Mode string
+    Port string
+    Mode string
 }
 
-type Database struct {
-	Host     string
-	Port     string
-	User     string
-	Password string
-	DBName   string
-	SSLName  string
+type DatabaseConfig struct {
+    Host     string
+    Port     string
+    User     string
+    Password string
+    DBName   string
+    SSLMode  string
 }
 
-type RedisConfig struct {
-	Host     string
-	Port     string
-	Password string
-	DB       int
-}
+func LoadConfig() (*Config, error) {
+    viper.SetConfigName("config")
+    viper.SetConfigType("yaml")
+    viper.AddConfigPath(".")
+    viper.AddConfigPath("./config")
 
-func LoadConfig()(*Config, error) {
-	viper.SetConfigName("config") 
-	viper.SetConfigType("yaml")
-	viper.AddConfigPath(".")
-	viper.AddConfigPath("./config")
+    // Default values
+    viper.SetDefault("server.port", "8080")
+    viper.SetDefault("server.mode", "development")
+    
+    viper.SetDefault("database.host", "localhost")
+    viper.SetDefault("database.port", "5432")
+    viper.SetDefault("database.sslmode", "disable")
 
-
-	//setup defaults
-	viper.SetDefault("server.port","8080")
-	viper.SetDefault("server.mode","development")
-
-
-	//Read the config
-	if err := viper.ReadInConfig(); err != nil {
+    if err := viper.ReadInConfig(); err != nil {
         return nil, err
     }
 
-	//Unmarshal the file into struct
-	var config Config
-	if err := viper.Unmarshal(&config); err != nil {
+    var config Config
+    if err := viper.Unmarshal(&config); err != nil {
         return nil, err
     }
-	return &config, nil
+
+    return &config, nil
 }

@@ -7,24 +7,23 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/rohan03122001/quizzing/internal/models"
 	"github.com/rohan03122001/quizzing/internal/repository"
-	"github.com/rohan03122001/quizzing/internal/websockets"
+	"github.com/rohan03122001/quizzing/internal/websocket"
 )
 
 type GameService struct {
-    roomRepo      *repository.RoomRepository
-    questionRepo  *repository.QuestionRepository
-    roundRepo     *repository.GameRoundRepository
-    hub           *websockets.Hub
+    roomRepo     *repository.RoomRepository
+    questionRepo *repository.QuestionRepository
+    roundRepo    *repository.GameRoundRepository
+    hub          *websocket.Hub
 }
 
 func NewGameService(
     roomRepo *repository.RoomRepository,
     questionRepo *repository.QuestionRepository,
     roundRepo *repository.GameRoundRepository,
-    hub *websockets.Hub,
+    hub *websocket.Hub,
 ) *GameService {
     return &GameService{
         roomRepo:     roomRepo,
@@ -32,33 +31,6 @@ func NewGameService(
         roundRepo:    roundRepo,
         hub:         hub,
     }
-}
-
-// InitializeGame sets up a new game
-func (s *GameService) InitializeGame(roomID string) error {
-    // Reset room state
-    room, err := s.roomRepo.GetRoomByCode(roomID)
-    if err != nil {
-        return err
-    }
-
-    room.CurrentRound = 0
-    room.Status = "playing"
-
-    if err := s.roomRepo.UpdateStatus(room.ID.String(), "playing"); err != nil {
-        return err
-    }
-
-    // Notify all players
-    s.hub.BroadcastToRoom(room.ID.String(), websockets.GameEvent{
-        Type: "game_initialized",
-        Data: map[string]interface{}{
-            "max_rounds": room.MaxRounds,
-            "round_time": room.RoundTime,
-        },
-    })
-
-    return nil
 }
 
 // StartRound begins a new round for a room
@@ -92,16 +64,17 @@ func (s *GameService) StartRound(roomID string) (*models.Question, error) {
         return nil, err
     }
 
-    // Increment room's current round
-    if err := s.roomRepo.IncrementRound(room.ID.String()); err != nil {
-        return nil, err
-    }
-
     return question, nil
 }
 
+type RoundResult struct {
+    Correct bool `json:"correct"`
+    Score   int  `json:"score"`
+    Order   int  `json:"order"`
+}
+
 // ProcessAnswer handles a player's answer submission
-func (s *GameService) ProcessAnswer(roomID string, userID string, answer string) (*RoundResult, error) {
+func (s *GameService) ProcessAnswer(roomID string, playerID string, answer string) (*RoundResult, error) {
     round, err := s.roundRepo.GetCurrentRound(roomID)
     if err != nil {
         return nil, errors.New("no active round found")
@@ -117,7 +90,7 @@ func (s *GameService) ProcessAnswer(roomID string, userID string, answer string)
         return nil, errors.New("question not found")
     }
 
-    // Check answer
+    // Check answer (case-insensitive)
     isCorrect := strings.EqualFold(strings.TrimSpace(answer), strings.TrimSpace(question.Answer))
     
     if isCorrect {
@@ -133,7 +106,7 @@ func (s *GameService) ProcessAnswer(roomID string, userID string, answer string)
         // Save answer
         playerAnswer := &models.PlayerAnswer{
             RoundID:     round.ID,
-            UserID:      uuid.MustParse(userID),
+            PlayerID:    playerID,
             Answer:      answer,
             Score:       score,
             AnswerOrder: round.AnswerCount,
@@ -182,17 +155,13 @@ func (s *GameService) EndRound(roomID string) error {
     round.State = "finished"
     round.EndTime = time.Now()
 
-    if err := s.roundRepo.UpdateRound(round); err != nil {
-        return err
-    }
-
     // Get and broadcast results
     answers, err := s.roundRepo.GetRoundAnswers(round.ID.String())
     if err != nil {
         return err
     }
 
-    s.hub.BroadcastToRoom(roomID, websockets.GameEvent{
+    s.hub.BroadcastToRoom(roomID, websocket.GameEvent{
         Type: "round_result",
         Data: answers,
     })
@@ -200,14 +169,8 @@ func (s *GameService) EndRound(roomID string) error {
     return nil
 }
 
-//ERROR
-// ShouldEndRound determines if current round should end
+// ShouldEndRound checks if the round should end
 func (s *GameService) ShouldEndRound(roomID string) bool {
-    _, err := s.roomRepo.GetRoomByCode(roomID)
-    if err != nil {
-        return false
-    }
-
     round, err := s.roundRepo.GetCurrentRound(roomID)
     if err != nil {
         return false
@@ -229,10 +192,3 @@ func (s *GameService) ShouldEndGame(roomID string) bool {
 
     return room.CurrentRound >= room.MaxRounds
 }
-
-type RoundResult struct {
-    Correct bool `json:"correct"`
-    Score   int  `json:"score"`
-    Order   int  `json:"order"`
-}
-
