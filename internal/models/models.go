@@ -16,7 +16,7 @@ type Room struct {
     Status       string    `gorm:"not null"`            // "waiting", "playing", "finished"
     MaxPlayers   int       `gorm:"default:10"`          // Maximum players allowed
     RoundTime    int       `gorm:"default:30"`          // Seconds per round
-    MaxRounds    int       `gorm:"default:5"`           // Number of rounds
+    MaxRounds    int       `gorm:"default:2"`           // Number of rounds
     CurrentRound int       `gorm:"default:0"`           // Current round number
     CreatedAt    time.Time
     EndedAt      *time.Time

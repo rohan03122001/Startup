@@ -5,6 +5,7 @@ package service
 import (
 	"errors"
 	"log"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -27,6 +28,15 @@ type RoundResult struct {
     Correct bool `json:"correct"`
     Score   int  `json:"score"`
     Order   int  `json:"order"`
+}
+
+// Add this new struct for final results
+type PlayerResult struct {
+    PlayerID   string         `json:"player_id"`
+    Username   string         `json:"username"`
+    TotalScore int           `json:"total_score"`
+    Rank       int           `json:"rank"`
+    Rounds     []RoundResult `json:"rounds"`
 }
 
 func NewGameService(
@@ -318,9 +328,87 @@ func (s *GameService) endGame(roomCode string) {
         return
     }
 
+    // Get all rounds for this room
+    rounds, err := s.roundRepo.GetRoomRounds(room.ID.String())
+    if err != nil {
+        log.Printf("Error getting room rounds: %v", err)
+        return
+    }
+
+    // Get all players in the room
+    players := s.hub.GetPlayersInRoom(roomCode)
+    playerResults := make(map[string]*PlayerResult)
+
+    // Initialize results for all players
+    for _, player := range players {
+        playerResults[player["id"]] = &PlayerResult{
+            PlayerID:   player["id"],
+            Username:   player["username"],
+            TotalScore: 0,
+            Rounds:     make([]RoundResult, len(rounds)),
+        }
+    }
+
+    // Process each round
+    for i, round := range rounds {
+        // Get answers for this round
+        answers, err := s.roundRepo.GetRoundAnswers(round.ID.String())
+        if err != nil {
+            log.Printf("Error getting round answers: %v", err)
+            continue
+        }
+
+        // Process answers for this round
+        answeredPlayers := make(map[string]bool)
+        for _, answer := range answers {
+            if result, exists := playerResults[answer.PlayerID]; exists {
+                result.TotalScore += answer.Score
+                result.Rounds[i] = RoundResult{
+                    Correct: answer.Score > 0,
+                    Score:   answer.Score,
+                    Order:   answer.AnswerOrder,
+                }
+                answeredPlayers[answer.PlayerID] = true
+            }
+        }
+
+        // Handle players who didn't answer
+        for playerID := range playerResults {
+            if !answeredPlayers[playerID] {
+                playerResults[playerID].Rounds[i] = RoundResult{
+                    Correct: false,
+                    Score:   0,
+                    Order:   0,
+                }
+            }
+        }
+    }
+
+    // Convert map to slice and sort by total score
+    finalResults := make([]*PlayerResult, 0, len(playerResults))
+    for _, result := range playerResults {
+        finalResults = append(finalResults, result)
+    }
+
+    // Sort by total score (descending)
+    sort.Slice(finalResults, func(i, j int) bool {
+        return finalResults[i].TotalScore > finalResults[j].TotalScore
+    })
+
+    // Assign ranks (handle ties)
+    currentRank := 1
+    previousScore := -1
+    for i, result := range finalResults {
+        if result.TotalScore != previousScore {
+            currentRank = i + 1
+        }
+        result.Rank = currentRank
+        previousScore = result.TotalScore
+    }
+
+    // Update room status
     if err := s.roomRepo.UpdateStatus(room.ID.String(), "finished"); err != nil {
         log.Printf("Error updating room status: %v", err)
-        return
     }
 
     // Cancel any existing timer
@@ -331,14 +419,17 @@ func (s *GameService) endGame(roomCode string) {
     }
     s.timerMutex.Unlock()
 
-    log.Printf("Game ended in room %s", roomCode)
-
+    // Broadcast final results
     s.hub.BroadcastToRoom(roomCode, websocket.GameEvent{
         Type: "game_end",
         Data: map[string]interface{}{
-            "message": "Game completed!",
+            "final_results": finalResults,
+            "total_rounds": len(rounds),
+            "room_code":    roomCode,
         },
     })
+
+    log.Printf("Game ended in room %s with %d players", roomCode, len(players))
 }
 
 // ShouldEndRound determines if the round should end

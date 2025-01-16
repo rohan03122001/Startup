@@ -83,3 +83,16 @@ func (r *GameRoundRepository) GetRoundScores(roundID string) (map[string]int, er
     }
     return scores, nil
 }
+
+// GetRoomRounds gets all rounds for a room
+func (r *GameRoundRepository) GetRoomRounds(roomID string) ([]models.GameRound, error) {
+    var rounds []models.GameRound
+    err := r.db.Where("room_id = ?", roomID).
+        Order("round_number asc").
+        Find(&rounds).Error
+    if err != nil {
+        log.Printf("Error fetching rounds for room %s: %v", roomID, err)
+        return nil, err
+    }
+    return rounds, nil
+}
