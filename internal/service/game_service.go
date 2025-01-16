@@ -177,13 +177,8 @@ func (s *GameService) ProcessAnswer(roomCode string, playerID string, answer str
         // Check if all players have answered
         playerCount := s.hub.GetPlayerCount(roomCode)
         if round.AnswerCount >= playerCount {
-            // Cancel timer as everyone has answered
-            s.timerMutex.Lock()
-            if timer, exists := s.roundTimers[roomCode]; exists {
-                timer.Stop()
-                delete(s.roundTimers, roomCode)
-            }
-            s.timerMutex.Unlock()
+            // Stop the timer before handling round end
+            s.stopRoundTimer(roomCode)
             
             // Handle round end
             go s.handleRoundEnd(roomCode)
@@ -217,17 +212,34 @@ func (s *GameService) ProcessAnswer(roomCode string, playerID string, answer str
     }, nil
 }
 
-// startRoundTimer starts the timer for a round
-func (s *GameService) startRoundTimer(roomCode string, duration int) {
+// Add new method to safely stop timer
+func (s *GameService) stopRoundTimer(roomCode string) {
     s.timerMutex.Lock()
+    defer s.timerMutex.Unlock()
+    
     if timer, exists := s.roundTimers[roomCode]; exists {
         timer.Stop()
+        delete(s.roundTimers, roomCode)
+        log.Printf("Stopped timer for room %s", roomCode)
+    }
+}
+
+// Update startRoundTimer to be more robust
+func (s *GameService) startRoundTimer(roomCode string, duration int) {
+    s.timerMutex.Lock()
+    // Stop any existing timer first
+    if existingTimer, exists := s.roundTimers[roomCode]; exists {
+        existingTimer.Stop()
+        delete(s.roundTimers, roomCode)
+        log.Printf("Stopped existing timer for room %s", roomCode)
     }
     
     // Create new timer
     timer := time.NewTimer(time.Duration(duration) * time.Second)
     s.roundTimers[roomCode] = timer
     s.timerMutex.Unlock()
+
+    log.Printf("Started new timer for room %s with duration %d seconds", roomCode, duration)
 
     // Start time update goroutine
     go func() {
@@ -238,17 +250,25 @@ func (s *GameService) startRoundTimer(roomCode string, duration int) {
         for {
             select {
             case <-timer.C:
+                s.stopRoundTimer(roomCode)  // Ensure timer is cleaned up
                 s.handleRoundEnd(roomCode)
                 return
             case <-ticker.C:
+                s.timerMutex.RLock()
+                _, timerExists := s.roundTimers[roomCode]
+                s.timerMutex.RUnlock()
+                
+                if !timerExists {
+                    return // Exit if timer was stopped
+                }
+                
                 remaining--
                 if remaining >= 0 {
-                    // Send time update
                     s.hub.BroadcastToRoom(roomCode, websocket.GameEvent{
                         Type: "timer_update",
                         Data: map[string]interface{}{
                             "remaining": remaining,
-                            "warning":   remaining <= 5, // Warning when ≤ 5 seconds
+                            "warning":   remaining <= 5,
                         },
                     })
                 }
