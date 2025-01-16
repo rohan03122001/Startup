@@ -96,3 +96,14 @@ func (r *GameRoundRepository) GetRoomRounds(roomID string) ([]models.GameRound, 
     }
     return rounds, nil
 }
+
+// GetPlayerAnswers gets all answers for a player in a room
+func (r *GameRoundRepository) GetPlayerAnswers(roomID string, playerID string) ([]models.PlayerAnswer, error) {
+    var answers []models.PlayerAnswer
+    err := r.db.
+        Joins("JOIN game_rounds ON player_answers.round_id = game_rounds.id").
+        Where("game_rounds.room_id = ? AND player_answers.player_id = ?", roomID, playerID).
+        Order("game_rounds.round_number ASC").
+        Find(&answers).Error
+    return answers, err
+}

@@ -135,3 +135,8 @@ func (s *RoomService) EndGame(roomCode string) error {
     log.Printf("Ending game in room %s", roomCode)
     return s.roomRepo.EndGame(room.ID.String())
 }
+
+// GetRoom retrieves a room by its code
+func (s *RoomService) GetRoom(roomCode string) (*models.Room, error) {
+    return s.roomRepo.GetByCode(roomCode)
+}

@@ -18,7 +18,8 @@ const (
     EventLeaveRoom    = "leave_room"
     EventStartGame    = "start_game"
     EventSubmitAnswer = "submit_answer"
-    EventPlayAgain = "play_again"
+    EventPlayAgain    = "play_again"
+    EventReconnect    = "reconnect"
 )
 
 // Request structures
@@ -34,6 +35,12 @@ type SubmitAnswerData struct {
 type GameSettings struct {
     MaxRounds  int `json:"max_rounds"`
     RoundTime  int `json:"round_time"`
+}
+
+type ReconnectData struct {
+    RoomCode  string `json:"room_code"`
+    PlayerID  string `json:"player_id"`
+    Username  string `json:"username"`
 }
 
 type GameHandler struct {
@@ -76,6 +83,8 @@ func (h *GameHandler) HandleMessage(client *websocket.Client, message []byte) er
         return h.handleSubmitAnswer(client, event.Data)
     case EventPlayAgain:
         return h.handlePlayAgain(client, event.Data)
+    case EventReconnect:
+        return h.handleReconnect(client, event.Data)
     default:
         return h.sendError(client, "Unknown event type")
     }
@@ -233,6 +242,39 @@ func (h *GameHandler) handlePlayAgain(client *websocket.Client, data json.RawMes
     }
 
     return nil
+}
+
+func (h *GameHandler) handleReconnect(client *websocket.Client, data json.RawMessage) error {
+    var reconnectData ReconnectData
+    if err := json.Unmarshal(data, &reconnectData); err != nil {
+        return h.sendError(client, "Invalid reconnect data format")
+    }
+
+    // Verify room exists and is active
+    room, err := h.roomService.GetRoom(reconnectData.RoomCode)
+    if err != nil {
+        return h.sendError(client, "Room not found")
+    }
+
+    // Update client info
+    client.ID = reconnectData.PlayerID
+    client.RoomID = room.Code
+    client.Username = reconnectData.Username
+
+    // Register client with hub
+    h.hub.Register <- client
+
+    // Get game state
+    gameState, err := h.gameService.GetGameState(room.Code, client.ID)
+    if err != nil {
+        return h.sendError(client, err.Error())
+    }
+
+    // Send current game state to reconnected player
+    return h.hub.SendToClient(client, websocket.GameEvent{
+        Type: "reconnected",
+        Data: gameState,
+    })
 }
 
 func (h *GameHandler) sendError(client *websocket.Client, message string) error {

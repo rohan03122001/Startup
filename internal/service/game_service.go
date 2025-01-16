@@ -526,3 +526,48 @@ func (s *GameService) RestartGame(roomCode string, settings *models.GameSettings
         roomCode, room.MaxRounds, room.RoundTime)
     return nil
 }
+
+// GetGameState returns the current game state
+func (s *GameService) GetGameState(roomCode string, playerID string) (map[string]interface{}, error) {
+    room, err := s.roomRepo.GetByCode(roomCode)
+    if err != nil {
+        return nil, errors.New("room not found")
+    }
+
+    // Get current round if game is in progress
+    var currentRound *models.GameRound
+    var currentQuestion *models.Question
+    if room.Status == "playing" {
+        currentRound, err = s.roundRepo.GetCurrentRound(room.ID.String())
+        if err == nil && currentRound != nil {
+            currentQuestion, _ = s.questionRepo.GetByID(currentRound.QuestionID.String())
+        }
+    }
+
+    // Get player's answers and scores
+    playerAnswers, err := s.roundRepo.GetPlayerAnswers(room.ID.String(), playerID)
+    if err != nil {
+        log.Printf("Error getting player answers: %v", err)
+    }
+
+    // Get all players in room
+    players := s.hub.GetPlayersInRoom(roomCode)
+
+    gameState := map[string]interface{}{
+        "room_code":     roomCode,
+        "game_status":   room.Status,
+        "current_round": room.CurrentRound,
+        "max_rounds":    room.MaxRounds,
+        "round_time":    room.RoundTime,
+        "players":       players,
+        "your_answers":  playerAnswers,
+    }
+
+    // Include current question if game is in progress
+    if currentQuestion != nil {
+        gameState["current_question"] = currentQuestion
+        gameState["round_end_time"] = currentRound.EndTime
+    }
+
+    return gameState, nil
+}
