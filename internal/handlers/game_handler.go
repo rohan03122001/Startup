@@ -7,6 +7,7 @@ import (
 	"log"
 	"time"
 
+	"github.com/rohan03122001/quizzing/internal/models"
 	"github.com/rohan03122001/quizzing/internal/service"
 	"github.com/rohan03122001/quizzing/internal/websocket"
 )
@@ -17,6 +18,7 @@ const (
     EventLeaveRoom    = "leave_room"
     EventStartGame    = "start_game"
     EventSubmitAnswer = "submit_answer"
+    EventPlayAgain = "play_again"
 )
 
 // Request structures
@@ -27,6 +29,11 @@ type JoinRoomData struct {
 
 type SubmitAnswerData struct {
     Answer string `json:"answer"`
+}
+
+type GameSettings struct {
+    MaxRounds  int `json:"max_rounds"`
+    RoundTime  int `json:"round_time"`
 }
 
 type GameHandler struct {
@@ -67,6 +74,8 @@ func (h *GameHandler) HandleMessage(client *websocket.Client, message []byte) er
         return h.handleStartGame(client)
     case EventSubmitAnswer:
         return h.handleSubmitAnswer(client, event.Data)
+    case EventPlayAgain:
+        return h.handlePlayAgain(client, event.Data)
     default:
         return h.sendError(client, "Unknown event type")
     }
@@ -197,6 +206,31 @@ func (h *GameHandler) endRound(roomID string) error {
             },
         })
     }()
+
+    return nil
+}
+
+func (h *GameHandler) handlePlayAgain(client *websocket.Client, data json.RawMessage) error {
+    var settings GameSettings
+    if err := json.Unmarshal(data, &settings); err != nil {
+        return h.sendError(client, "Invalid settings format")
+    }
+
+    // Validate settings
+    if settings.MaxRounds <= 0 {
+        settings.MaxRounds = 5 // Default
+    }
+    if settings.RoundTime <= 0 {
+        settings.RoundTime = 30 // Default
+    }
+
+    // Restart game
+    if err := h.gameService.RestartGame(client.RoomID, &models.GameSettings{
+        MaxRounds: settings.MaxRounds,
+        RoundTime: settings.RoundTime,
+    }); err != nil {
+        return h.sendError(client, err.Error())
+    }
 
     return nil
 }

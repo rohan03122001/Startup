@@ -220,7 +220,6 @@ func (s *GameService) ProcessAnswer(roomCode string, playerID string, answer str
 // startRoundTimer starts the timer for a round
 func (s *GameService) startRoundTimer(roomCode string, duration int) {
     s.timerMutex.Lock()
-    // Cancel existing timer if any
     if timer, exists := s.roundTimers[roomCode]; exists {
         timer.Stop()
     }
@@ -230,13 +229,32 @@ func (s *GameService) startRoundTimer(roomCode string, duration int) {
     s.roundTimers[roomCode] = timer
     s.timerMutex.Unlock()
 
-    // Handle timer expiration
+    // Start time update goroutine
     go func() {
-        <-timer.C
-        s.handleRoundEnd(roomCode)
-    }()
+        remaining := duration
+        ticker := time.NewTicker(1 * time.Second)
+        defer ticker.Stop()
 
-    log.Printf("Started %d second timer for room %s", duration, roomCode)
+        for {
+            select {
+            case <-timer.C:
+                s.handleRoundEnd(roomCode)
+                return
+            case <-ticker.C:
+                remaining--
+                if remaining >= 0 {
+                    // Send time update
+                    s.hub.BroadcastToRoom(roomCode, websocket.GameEvent{
+                        Type: "timer_update",
+                        Data: map[string]interface{}{
+                            "remaining": remaining,
+                            "warning":   remaining <= 5, // Warning when ≤ 5 seconds
+                        },
+                    })
+                }
+            }
+        }
+    }()
 }
 
 // handleRoundEnd processes the end of a round
@@ -469,5 +487,42 @@ func (s *GameService) EndRound(roomID string) error {
     })
 
     log.Printf("Ended round in room %s", roomID)
+    return nil
+}
+
+// RestartGame resets the game with the same players
+func (s *GameService) RestartGame(roomCode string, settings *models.GameSettings) error {
+    room, err := s.roomRepo.GetByCode(roomCode)
+    if err != nil {
+        return errors.New("room not found")
+    }
+
+    // Update room settings if provided
+    if settings != nil {
+        room.MaxRounds = settings.MaxRounds
+        room.RoundTime = settings.RoundTime
+    }
+
+    // Reset room state
+    room.CurrentRound = 0
+    room.Status = "waiting"
+
+    if err := s.roomRepo.UpdateRoom(room); err != nil {
+        return err
+    }
+
+    // Broadcast restart event
+    s.hub.BroadcastToRoom(roomCode, websocket.GameEvent{
+        Type: "game_restart",
+        Data: map[string]interface{}{
+            "settings": map[string]interface{}{
+                "max_rounds":  room.MaxRounds,
+                "round_time": room.RoundTime,
+            },
+        },
+    })
+
+    log.Printf("Game restarted in room %s with %d rounds, %d seconds per round", 
+        roomCode, room.MaxRounds, room.RoundTime)
     return nil
 }

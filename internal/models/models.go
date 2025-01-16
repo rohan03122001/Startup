@@ -53,6 +53,12 @@ type PlayerAnswer struct {
     AnsweredAt  time.Time
 }
 
+// GameSettings represents game settings
+type GameSettings struct {
+    MaxRounds  int `json:"max_rounds"`
+    RoundTime  int `json:"round_time"`
+}
+
 // BeforeCreate hooks to generate UUIDs
 func (r *Room) BeforeCreate(tx *gorm.DB) error {
     if r.ID == uuid.Nil {

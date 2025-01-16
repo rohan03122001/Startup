@@ -70,3 +70,9 @@ func (r *RoomRepository) EndGame(roomID string) error {
             "ended_at": r.db.Raw("NOW()"),
         }).Error
 }
+
+// UpdateRoom updates room settings
+func (r *RoomRepository) UpdateRoom(room *models.Room) error {
+    log.Printf("Updating room %s settings", room.Code)
+    return r.db.Save(room).Error
+}
