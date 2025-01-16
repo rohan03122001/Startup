@@ -20,6 +20,7 @@ type Room struct {
     CurrentRound int       `gorm:"default:0"`           // Current round number
     CreatedAt    time.Time
     EndedAt      *time.Time
+    LastActivity time.Time `gorm:"not null"` // Track last activity in room
 }
 
 // Question represents a quiz question

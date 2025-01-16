@@ -47,6 +47,8 @@ func main() {
     // Initialize services
     roomService := service.NewRoomService(roomRepo, hub)
     gameService := service.NewGameService(roomRepo, questionRepo, roundRepo, hub)
+    cleanupService := service.NewCleanupService(roomRepo, hub)
+    cleanupService.StartCleanupRoutine()
 
     // Initialize handlers
     httpHandler := handlers.NewHTTPHandler(roomService)

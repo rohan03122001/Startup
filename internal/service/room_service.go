@@ -88,6 +88,11 @@ func (s *RoomService) JoinRoom(roomCode string, playerID string) (*models.Room, 
         return nil, errors.New("room is full")
     }
 
+    // Update last activity
+    if err := s.roomRepo.UpdateLastActivity(room.ID.String()); err != nil {
+        log.Printf("Error updating room activity: %v", err)
+    }
+
     log.Printf("Player %s successfully joined room %s", playerID, roomCode)
     return room, nil
 }
@@ -113,6 +118,11 @@ func (s *RoomService) StartGame(roomCode string) error {
     err = s.roomRepo.UpdateStatus(room.ID.String(), "playing")
     if err != nil {
         return errors.New("failed to start game")
+    }
+
+    // Update last activity
+    if err := s.roomRepo.UpdateLastActivity(room.ID.String()); err != nil {
+        log.Printf("Error updating room activity: %v", err)
     }
 
     log.Printf("Started game in room %s with %d players", roomCode, currentPlayers)
