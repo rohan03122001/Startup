@@ -27,7 +27,7 @@ func (h *HTTPHandler) CreateRoom(c *gin.Context) {
         return
     }
 
-    c.JSON(http.StatusOK, room)
+    c.JSON(http.StatusCreated, room)
     // c.JSON(http.StatusCreated, gin.H{
     //     "room_code": room.Code,
     //     "max_players": room.MaxPlayers,
@@ -49,7 +49,6 @@ func (h *HTTPHandler) GetActiveRooms(c *gin.Context) {
 // Add this new struct
 type JoinRoomRequest struct {
     RoomCode string `json:"room_code"`
-    Username string `json:"username"`
 }
 
 type JoinRoomResponse struct {

@@ -19,9 +19,16 @@ Creates a new quiz room and returns the room code.
 
 ```json
 {
-  "room_code": "ABC123",
-  "max_players": 10,
-  "round_time": 30
+  "ID": "uuid",
+  "Code": "ABC123",
+  "Status": "waiting",
+  "MaxPlayers": 10,
+  "RoundTime": 30,
+  "MaxRounds": 5,
+  "CurrentRound": 0,
+  "CreatedAt": "2024-01-16T10:00:00Z",
+  "EndedAt": "2024-01-16T10:00:00Z",
+  "LastActivity": "2024-01-16T10:00:00Z"
 }
 ```
 
@@ -41,14 +48,16 @@ Retrieves a list of all active rooms waiting for players.
 ```json
 [
   {
-    "id": "uuid",
-    "code": "ABC123",
-    "status": "waiting",
-    "max_players": 10,
-    "round_time": 30,
-    "max_rounds": 5,
-    "current_round": 0,
-    "created_at": "2024-01-16T10:00:00Z"
+    "ID": "uuid",
+    "Code": "ABC123",
+    "Status": "waiting",
+    "MaxPlayers": 10,
+    "RoundTime": 30,
+    "MaxRounds": 5,
+    "CurrentRound": 0,
+    "CreatedAt": "2024-01-16T10:00:00Z",
+    "EndedAt": "2024-01-16T10:00:00Z",
+    "LastActivity": "2024-01-16T10:00:00Z"
   }
 ]
 ```
