@@ -150,3 +150,26 @@ func (s *RoomService) EndGame(roomCode string) error {
 func (s *RoomService) GetRoom(roomCode string) (*models.Room, error) {
     return s.roomRepo.GetByCode(roomCode)
 }
+
+func (s *RoomService) ValidateRoom(roomCode string) (*models.Room, error) {
+    room, err := s.roomRepo.GetByCode(roomCode)
+    if err != nil {
+        return nil, errors.New("room not found")
+    }
+
+    if room.Status != "waiting" {
+        return nil, errors.New("game already in progress")
+    }
+
+    // CHECKING CAPACITY
+    currentPlayers := s.hub.GetPlayerCount(room.Code)
+    if currentPlayers >= room.MaxPlayers {
+        return nil, errors.New("room is full")
+    }
+
+    return room, nil
+}
+
+func (s *RoomService) GetPlayerCount(roomCode string) int {
+    return s.hub.GetPlayerCount(roomCode)
+}
