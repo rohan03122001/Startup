@@ -46,6 +46,48 @@ func (h *HTTPHandler) GetActiveRooms(c *gin.Context) {
     c.JSON(http.StatusOK, rooms)
 }
 
+// Add this new struct
+type JoinRoomRequest struct {
+    RoomCode string `json:"room_code"`
+    Username string `json:"username"`
+}
+
+type JoinRoomResponse struct {
+    RoomCode    string `json:"room_code"`
+    MaxPlayers  int    `json:"max_players"`
+    RoundTime   int    `json:"round_time"`
+    MaxRounds   int    `json:"max_rounds"`
+    PlayerCount int    `json:"player_count"`
+}
+
+// Add this new handler method
+func (h *HTTPHandler) ValidateRoom(c *gin.Context) {
+    var req JoinRoomRequest
+    if err := c.ShouldBindJSON(&req); err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request format"})
+        return
+    }
+
+    room, err := h.roomService.ValidateRoom(req.RoomCode)
+    if err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+        return
+    }
+
+    // Get current player count
+    playerCount := h.roomService.GetPlayerCount(req.RoomCode)
+
+    response := JoinRoomResponse{
+        RoomCode:    room.Code,
+        MaxPlayers:  room.MaxPlayers,
+        RoundTime:   room.RoundTime,
+        MaxRounds:   room.MaxRounds,
+        PlayerCount: playerCount,
+    }
+
+    c.JSON(http.StatusOK, response)
+}
+
 func (h *HTTPHandler) RegisterRoutes(r *gin.Engine) {
     // CORS middleware
     r.Use(func(c *gin.Context) {
@@ -63,6 +105,6 @@ func (h *HTTPHandler) RegisterRoutes(r *gin.Engine) {
     {
         api.POST("/rooms", h.CreateRoom)
         api.GET("/rooms", h.GetActiveRooms)
-        //add 
+        api.POST("/rooms/validate", h.ValidateRoom)
     }
 }
