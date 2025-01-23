@@ -27,11 +27,12 @@ func (h *HTTPHandler) CreateRoom(c *gin.Context) {
         return
     }
 
-    c.JSON(http.StatusCreated, gin.H{
-        "room_code": room.Code,
-        "max_players": room.MaxPlayers,
-        "round_time": room.RoundTime,
-    })
+    c.JSON(http.StatusOK, room)
+    // c.JSON(http.StatusCreated, gin.H{
+    //     "room_code": room.Code,
+    //     "max_players": room.MaxPlayers,
+    //     "round_time": room.RoundTime,
+    // })
 }
 
 // GetActiveRooms returns list of rooms waiting for players
@@ -62,5 +63,6 @@ func (h *HTTPHandler) RegisterRoutes(r *gin.Engine) {
     {
         api.POST("/rooms", h.CreateRoom)
         api.GET("/rooms", h.GetActiveRooms)
+        //add 
     }
 }
