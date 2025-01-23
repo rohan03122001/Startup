@@ -27,7 +27,7 @@ func (h *HTTPHandler) CreateRoom(c *gin.Context) {
         return
     }
 
-    c.JSON(http.StatusOK, room)
+    c.JSON(http.StatusCreated, room)
     // c.JSON(http.StatusCreated, gin.H{
     //     "room_code": room.Code,
     //     "max_players": room.MaxPlayers,
