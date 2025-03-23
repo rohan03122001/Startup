@@ -7,6 +7,11 @@ import (
 	"sync"
 )
 
+// RoomService interface represents minimal room service methods needed by hub
+type RoomService interface {
+	UpdateRoomActivity(roomCode string) error
+}
+
 // Hub maintains the set of active clients and broadcasts messages
 type Hub struct {
     // Registered clients mapped by room
@@ -23,6 +28,9 @@ type Hub struct {
 
     // Broadcast messages
     Broadcast chan *GameEvent
+
+    // Room service for updating room activity
+    roomService RoomService
 }
 
 // GameEvent represents a game-related message
@@ -33,13 +41,20 @@ type GameEvent struct {
     Error   string      `json:"error,omitempty"`
 }
 
+// NewHub creates a new Hub for WebSocket communication
 func NewHub() *Hub {
-    return &Hub{
-        rooms:      make(map[string]map[string]*Client),
-        Register:   make(chan *Client),
-        Unregister: make(chan *Client),
-        Broadcast:  make(chan *GameEvent, 256),
-    }
+	return &Hub{
+		Broadcast:  make(chan *GameEvent, 256),
+		Register:   make(chan *Client),
+		Unregister: make(chan *Client),
+		rooms:      make(map[string]map[string]*Client),
+		mu:         sync.RWMutex{},
+	}
+}
+
+// SetRoomService sets the room service for the hub
+func (h *Hub) SetRoomService(service RoomService) {
+	h.roomService = service
 }
 
 // Run starts the hub's main event loop
@@ -115,6 +130,12 @@ func (h *Hub) GetPlayerCount(roomCode string) int {
 func (h *Hub) BroadcastToRoom(roomCode string, event GameEvent) {
     event.RoomID = roomCode
     log.Printf("Broadcasting %s event to room %s", event.Type, roomCode)
+    
+    // Update room last activity if needed
+    if h.roomService != nil {
+        h.roomService.UpdateRoomActivity(roomCode)
+    }
+    
     h.Broadcast <- &event
 }
 

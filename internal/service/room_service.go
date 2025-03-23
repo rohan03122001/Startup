@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log"
 	"math/rand"
+	"time"
 
 	"github.com/rohan03122001/quizzing/internal/models"
 	"github.com/rohan03122001/quizzing/internal/repository"
@@ -48,11 +49,12 @@ func (s *RoomService) CreateRoom() (*models.Room, error) {
 
     // Create new room
     room := &models.Room{
-        Code:       roomCode,
-        Status:     "waiting",
-        MaxPlayers: 10,    // Default settings
-        RoundTime:  30,    // 30 seconds per round
-        MaxRounds:  5,     // 5 rounds per game
+        Code:         roomCode,
+        Status:       "waiting",
+        MaxPlayers:   10,    // Default settings
+        RoundTime:    30,    // 30 seconds per round
+        MaxRounds:    5,     // 5 rounds per game
+        LastActivity: time.Now(), // Explicitly set last activity time
     }
 
     if err := s.roomRepo.CreateRoom(room); err != nil {
@@ -172,4 +174,20 @@ func (s *RoomService) ValidateRoom(roomCode string) (*models.Room, error) {
 
 func (s *RoomService) GetPlayerCount(roomCode string) int {
     return s.hub.GetPlayerCount(roomCode)
+}
+
+// UpdateRoomActivity updates the last activity timestamp for a room
+func (s *RoomService) UpdateRoomActivity(roomCode string) error {
+    room, err := s.roomRepo.GetByCode(roomCode)
+    if err != nil {
+        log.Printf("Error finding room %s to update activity: %v", roomCode, err)
+        return err
+    }
+    
+    if err := s.roomRepo.UpdateLastActivity(room.ID.String()); err != nil {
+        log.Printf("Error updating room %s activity: %v", roomCode, err)
+        return err
+    }
+    
+    return nil
 }

@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	inactiveRoomTimeout = 3 * time.Minute
+	inactiveRoomTimeout = 10 * time.Minute
 	cleanupInterval    = 1 * time.Minute
 )
 

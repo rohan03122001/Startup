@@ -65,6 +65,10 @@ func (r *Room) BeforeCreate(tx *gorm.DB) error {
     if r.ID == uuid.Nil {
         r.ID = uuid.New()
     }
+    // Initialize LastActivity with current time
+    if r.LastActivity.IsZero() {
+        r.LastActivity = time.Now()
+    }
     return nil
 }
 
