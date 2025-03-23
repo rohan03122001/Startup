@@ -107,3 +107,15 @@ func (r *GameRoundRepository) GetPlayerAnswers(roomID string, playerID string) (
         Find(&answers).Error
     return answers, err
 }
+
+// DeleteRoundAnswers deletes all player answers for a specific round
+func (r *GameRoundRepository) DeleteRoundAnswers(roundID string) error {
+    log.Printf("Deleting all player answers for round %s", roundID)
+    return r.db.Where("round_id = ?", roundID).Delete(&models.PlayerAnswer{}).Error
+}
+
+// DeleteRound deletes a specific game round
+func (r *GameRoundRepository) DeleteRound(roundID string) error {
+    log.Printf("Deleting round %s", roundID)
+    return r.db.Where("id = ?", roundID).Delete(&models.GameRound{}).Error
+}

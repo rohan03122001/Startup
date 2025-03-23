@@ -576,6 +576,12 @@ func (s *GameService) RestartGame(roomCode string, settings *models.GameSettings
         return errors.New("room not found")
     }
 
+    // Clear previous game data to prevent score aggregation
+    if err := s.clearPreviousGameData(room.ID.String()); err != nil {
+        log.Printf("Warning: couldn't clear previous game data: %v", err)
+        // Continue anyway - this is not a fatal error
+    }
+
     // Update room settings if provided
     if settings != nil {
         room.MaxRounds = settings.MaxRounds
@@ -603,6 +609,32 @@ func (s *GameService) RestartGame(roomCode string, settings *models.GameSettings
 
     log.Printf("Game restarted in room %s with %d rounds, %d seconds per round", 
         roomCode, room.MaxRounds, room.RoundTime)
+    return nil
+}
+
+// clearPreviousGameData removes all rounds and player answers from previous games in this room
+func (s *GameService) clearPreviousGameData(roomID string) error {
+    // Get all rounds for this room
+    rounds, err := s.roundRepo.GetRoomRounds(roomID)
+    if err != nil {
+        return err
+    }
+    
+    // Delete player answers and rounds
+    for _, round := range rounds {
+        // Delete all answers for this round
+        if err := s.roundRepo.DeleteRoundAnswers(round.ID.String()); err != nil {
+            log.Printf("Error deleting answers for round %s: %v", round.ID.String(), err)
+            continue
+        }
+        
+        // Delete the round itself
+        if err := s.roundRepo.DeleteRound(round.ID.String()); err != nil {
+            log.Printf("Error deleting round %s: %v", round.ID.String(), err)
+        }
+    }
+    
+    log.Printf("Cleared previous game data for room %s", roomID)
     return nil
 }
 
