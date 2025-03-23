@@ -144,8 +144,47 @@ func (s *GameService) ProcessAnswer(roomCode string, playerID string, answer str
         return nil, errors.New("question not found")
     }
 
-    // Check answer (case-insensitive)
-    isCorrect := strings.EqualFold(strings.TrimSpace(answer), strings.TrimSpace(question.Answer))
+    // Add debugging for answer comparison
+    submitted := strings.TrimSpace(answer)
+    correct := strings.TrimSpace(question.Answer)
+    
+    log.Printf("Answer comparison - Submitted: '%s' (len: %d), Correct: '%s' (len: %d)", 
+        submitted, len(submitted), correct, len(correct))
+    
+    // Try multiple comparison strategies
+    isCorrect := false
+    
+    // 1. Case-insensitive with trimming (original method)
+    if strings.EqualFold(submitted, correct) {
+        isCorrect = true
+        log.Printf("Answer matched using EqualFold")
+    }
+    
+    // 2. Normalized comparison
+    if !isCorrect {
+        // Convert to lowercase and trim
+        submittedNorm := strings.ToLower(submitted)
+        correctNorm := strings.ToLower(correct)
+        if submittedNorm == correctNorm {
+            isCorrect = true
+            log.Printf("Answer matched using lowercase normalization")
+        }
+    }
+    
+    // 3. Fuzzy matching (more lenient)
+    if !isCorrect {
+        // Remove punctuation, extra spaces, and compare
+        submittedClean := cleanStringForComparison(submitted)
+        correctClean := cleanStringForComparison(correct)
+        
+        log.Printf("Cleaned for comparison - Submitted: '%s', Correct: '%s'", 
+            submittedClean, correctClean)
+            
+        if submittedClean == correctClean {
+            isCorrect = true
+            log.Printf("Answer matched using cleaned comparison")
+        }
+    }
     
     if isCorrect {
         // Increment answer count
@@ -210,6 +249,26 @@ func (s *GameService) ProcessAnswer(roomCode string, playerID string, answer str
         Score:   0,
         Order:   0,
     }, nil
+}
+
+// Helper function to clean strings for comparison
+func cleanStringForComparison(s string) string {
+    // Convert to lowercase
+    s = strings.ToLower(s)
+    
+    // Remove punctuation
+    punctuation := []string{",", ".", ";", ":", "\"", "'", "!", "?", "(", ")"}
+    for _, p := range punctuation {
+        s = strings.ReplaceAll(s, p, "")
+    }
+    
+    // Replace multiple spaces with a single space
+    for strings.Contains(s, "  ") {
+        s = strings.ReplaceAll(s, "  ", " ")
+    }
+    
+    // Trim spaces
+    return strings.TrimSpace(s)
 }
 
 // Add new method to safely stop timer
