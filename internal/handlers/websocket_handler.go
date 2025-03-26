@@ -51,14 +51,19 @@ func (h *WebSocketHandler) HandleConnection(c *gin.Context) {
     // Set message handler
     client.SetMessageHandler(h.gameHandler.HandleMessage)
 
-    // Register with hub
-    h.hub.Register <- client
-
     // Start read/write pumps
     go client.ReadPump()
     go client.WritePump()
 
     log.Printf("New WebSocket connection established: Client %s", clientID)
+    
+    // Send connection acknowledgment
+    h.hub.SendToClient(client, ws.GameEvent{
+        Type: "connection_established",
+        Data: map[string]interface{}{
+            "client_id": clientID,
+        },
+    })
 }
 
 // RegisterRoutes registers the WebSocket endpoint

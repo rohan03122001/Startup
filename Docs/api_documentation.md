@@ -351,3 +351,34 @@ CREATE TABLE player_answers (
 - 400: Bad Request
 - 404: Not Found
 - 500: Internal Server Error
+
+
+//UPDATE
+
+Client Status:
+Added Status field -active / disconnected -and ReconnectToken. Disconnected clients kept in memory for 5 mins.
+
+Active Player Tracking:
+Added GetActivePlayerCount() to count only connected users. Used for round logic and game end conditions.
+
+Events Added:
+
+player_disconnected
+
+player_reconnected
+
+Connection state included in player listings.
+
+Reconnection Flow:
+Players can reconnect with previous ID. Game state is restored. Room notified of reconnection.
+
+Game Logic Updates:
+
+Game ends if active players < 2
+
+Rounds complete based on active responses
+
+Player Status shown in final results
+
+Room Cleanup:
+Inactive rooms cleaned after 10 mins. Disconnected clients purged after 5 mins.

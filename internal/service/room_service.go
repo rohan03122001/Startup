@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log"
 	"math/rand"
+	"time"
 
 	"github.com/rohan03122001/quizzing/internal/models"
 	"github.com/rohan03122001/quizzing/internal/repository"
@@ -48,11 +49,12 @@ func (s *RoomService) CreateRoom() (*models.Room, error) {
 
     // Create new room
     room := &models.Room{
-        Code:       roomCode,
-        Status:     "waiting",
-        MaxPlayers: 10,    // Default settings
-        RoundTime:  30,    // 30 seconds per round
-        MaxRounds:  5,     // 5 rounds per game
+        Code:         roomCode,
+        Status:       "waiting",
+        MaxPlayers:   10,    // Default settings
+        RoundTime:    30,    // 30 seconds per round
+        MaxRounds:    5,     // 5 rounds per game
+        LastActivity: time.Now(), // Explicitly set last activity time
     }
 
     if err := s.roomRepo.CreateRoom(room); err != nil {
@@ -64,9 +66,7 @@ func (s *RoomService) CreateRoom() (*models.Room, error) {
     return room, nil
 }
 
-// internal/service/room_service.go
-
-// Update JoinRoom method
+// JoinRoom updated to check active players only
 func (s *RoomService) JoinRoom(roomCode string, playerID string) (*models.Room, error) {
     log.Printf("Player %s trying to join room %s", playerID, roomCode)
     
@@ -81,11 +81,19 @@ func (s *RoomService) JoinRoom(roomCode string, playerID string) (*models.Room, 
         return nil, errors.New("game already in progress")
     }
 
-    // Check room capacity
-    currentPlayers := s.hub.GetPlayerCount(room.Code)  // Changed from ID to Code
-    if currentPlayers >= room.MaxPlayers {
-        log.Printf("Room %s is full (%d/%d players)", roomCode, currentPlayers, room.MaxPlayers)
+    // Check room capacity using active player count
+    activePlayerCount := s.hub.GetActivePlayerCount(room.Code)
+    if activePlayerCount >= room.MaxPlayers {
+        log.Printf("Room %s is full (%d/%d active players)", 
+            roomCode, activePlayerCount, room.MaxPlayers)
         return nil, errors.New("room is full")
+    }
+
+    // Check if player is trying to rejoin (disconnected state)
+    existingClient := s.hub.FindClientByID(room.Code, playerID)
+    if existingClient != nil && existingClient.Status == "disconnected" {
+        log.Printf("Player %s is rejoining room %s after disconnection", playerID, roomCode)
+        // The reconnection will be handled by the websocket handler
     }
 
     // Update last activity
@@ -97,7 +105,7 @@ func (s *RoomService) JoinRoom(roomCode string, playerID string) (*models.Room, 
     return room, nil
 }
 
-// StartGame updated to use room code
+// StartGame updated to check active players only
 func (s *RoomService) StartGame(roomCode string) error {
     room, err := s.roomRepo.GetByCode(roomCode)
     if err != nil {
@@ -108,11 +116,11 @@ func (s *RoomService) StartGame(roomCode string) error {
         return errors.New("game already started")
     }
 
-    currentPlayers := s.hub.GetPlayerCount(room.Code)  // Changed from ID to Code
-    log.Printf("Current players in room %s: %d", roomCode, currentPlayers)
+    activePlayerCount := s.hub.GetActivePlayerCount(room.Code)
+    log.Printf("Current active players in room %s: %d", roomCode, activePlayerCount)
     
-    if currentPlayers < 2 {
-        return errors.New("need at least 2 players to start")
+    if activePlayerCount < 2 {
+        return errors.New("need at least 2 active players to start")
     }
 
     err = s.roomRepo.UpdateStatus(room.ID.String(), "playing")
@@ -125,7 +133,7 @@ func (s *RoomService) StartGame(roomCode string) error {
         log.Printf("Error updating room activity: %v", err)
     }
 
-    log.Printf("Started game in room %s with %d players", roomCode, currentPlayers)
+    log.Printf("Started game in room %s with %d active players", roomCode, activePlayerCount)
     return nil
 }
 
@@ -161,9 +169,9 @@ func (s *RoomService) ValidateRoom(roomCode string) (*models.Room, error) {
         return nil, errors.New("game already in progress")
     }
 
-    // CHECKING CAPACITY
-    currentPlayers := s.hub.GetPlayerCount(room.Code)
-    if currentPlayers >= room.MaxPlayers {
+    // Check active players capacity 
+    activePlayerCount := s.hub.GetActivePlayerCount(room.Code)
+    if activePlayerCount >= room.MaxPlayers {
         return nil, errors.New("room is full")
     }
 
@@ -171,5 +179,21 @@ func (s *RoomService) ValidateRoom(roomCode string) (*models.Room, error) {
 }
 
 func (s *RoomService) GetPlayerCount(roomCode string) int {
-    return s.hub.GetPlayerCount(roomCode)
+    return s.hub.GetActivePlayerCount(roomCode)
+}
+
+// UpdateRoomActivity updates the last activity timestamp for a room
+func (s *RoomService) UpdateRoomActivity(roomCode string) error {
+    room, err := s.roomRepo.GetByCode(roomCode)
+    if err != nil {
+        log.Printf("Error finding room %s to update activity: %v", roomCode, err)
+        return err
+    }
+    
+    if err := s.roomRepo.UpdateLastActivity(room.ID.String()); err != nil {
+        log.Printf("Error updating room %s activity: %v", roomCode, err)
+        return err
+    }
+    
+    return nil
 }

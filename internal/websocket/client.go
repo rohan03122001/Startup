@@ -45,6 +45,12 @@ type Client struct {
 
     // Message handler function
     messageHandler func(*Client, []byte) error
+    
+    // Client status: "active" or "disconnected"
+    Status string
+    
+    // Reconnection token for rejoining
+    ReconnectToken string
 }
 
 // NewClient creates a new client instance
@@ -55,6 +61,7 @@ func NewClient(hub *Hub, conn *websocket.Conn, roomID, clientID string) *Client 
         send:   make(chan *GameEvent, 256),
         RoomID: roomID,
         ID:     clientID,
+        Status: "active", // Initialize as active
     }
 }
 
@@ -66,9 +73,10 @@ func (c *Client) SetMessageHandler(handler func(*Client, []byte) error) {
 // ReadPump pumps messages from the WebSocket connection to the hub
 func (c *Client) ReadPump() {
     defer func() {
-        c.hub.Unregister <- c
+        // Mark client as disconnected instead of immediately unregistering
+        c.hub.handleDisconnection(c)
         c.conn.Close()
-        log.Printf("Client %s disconnected", c.ID)
+        log.Printf("Client %s connection closed", c.ID)
     }()
 
     c.conn.SetReadLimit(maxMessageSize)

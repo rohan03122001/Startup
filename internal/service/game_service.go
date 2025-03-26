@@ -30,13 +30,14 @@ type RoundResult struct {
     Order   int  `json:"order"`
 }
 
-// Add this new struct for final results
+// PlayerResult represents a player's final game results
 type PlayerResult struct {
     PlayerID   string         `json:"player_id"`
     Username   string         `json:"username"`
-    TotalScore int           `json:"total_score"`
-    Rank       int           `json:"rank"`
-    Rounds     []RoundResult `json:"rounds"`
+    TotalScore int            `json:"total_score"`
+    Rank       int            `json:"rank"`
+    Rounds     []RoundResult  `json:"rounds"`
+    Status     string         `json:"status"` // "active" or "disconnected"
 }
 
 func NewGameService(
@@ -144,8 +145,47 @@ func (s *GameService) ProcessAnswer(roomCode string, playerID string, answer str
         return nil, errors.New("question not found")
     }
 
-    // Check answer (case-insensitive)
-    isCorrect := strings.EqualFold(strings.TrimSpace(answer), strings.TrimSpace(question.Answer))
+    // Add debugging for answer comparison
+    submitted := strings.TrimSpace(answer)
+    correct := strings.TrimSpace(question.Answer)
+    
+    log.Printf("Answer comparison - Submitted: '%s' (len: %d), Correct: '%s' (len: %d)", 
+        submitted, len(submitted), correct, len(correct))
+    
+    // Try multiple comparison strategies
+    isCorrect := false
+    
+    // 1. Case-insensitive with trimming (original method)
+    if strings.EqualFold(submitted, correct) {
+        isCorrect = true
+        log.Printf("Answer matched using EqualFold")
+    }
+    
+    // 2. Normalized comparison
+    if !isCorrect {
+        // Convert to lowercase and trim
+        submittedNorm := strings.ToLower(submitted)
+        correctNorm := strings.ToLower(correct)
+        if submittedNorm == correctNorm {
+            isCorrect = true
+            log.Printf("Answer matched using lowercase normalization")
+        }
+    }
+    
+    // 3. Fuzzy matching (more lenient)
+    if !isCorrect {
+        // Remove punctuation, extra spaces, and compare
+        submittedClean := cleanStringForComparison(submitted)
+        correctClean := cleanStringForComparison(correct)
+        
+        log.Printf("Cleaned for comparison - Submitted: '%s', Correct: '%s'", 
+            submittedClean, correctClean)
+            
+        if submittedClean == correctClean {
+            isCorrect = true
+            log.Printf("Answer matched using cleaned comparison")
+        }
+    }
     
     if isCorrect {
         // Increment answer count
@@ -174,9 +214,9 @@ func (s *GameService) ProcessAnswer(roomCode string, playerID string, answer str
         log.Printf("Player %s submitted correct answer in room %s (order: %d, score: %d)", 
             playerID, roomCode, round.AnswerCount, score)
 
-        // Check if all players have answered
-        playerCount := s.hub.GetPlayerCount(roomCode)
-        if round.AnswerCount >= playerCount {
+        // Check if all active players have answered
+        activePlayerCount := s.hub.GetActivePlayerCount(roomCode)
+        if round.AnswerCount >= activePlayerCount && activePlayerCount > 0 {
             // Stop the timer before handling round end
             s.stopRoundTimer(roomCode)
             
@@ -210,6 +250,26 @@ func (s *GameService) ProcessAnswer(roomCode string, playerID string, answer str
         Score:   0,
         Order:   0,
     }, nil
+}
+
+// Helper function to clean strings for comparison
+func cleanStringForComparison(s string) string {
+    // Convert to lowercase
+    s = strings.ToLower(s)
+    
+    // Remove punctuation
+    punctuation := []string{",", ".", ";", ":", "\"", "'", "!", "?", "(", ")"}
+    for _, p := range punctuation {
+        s = strings.ReplaceAll(s, p, "")
+    }
+    
+    // Replace multiple spaces with a single space
+    for strings.Contains(s, "  ") {
+        s = strings.ReplaceAll(s, "  ", " ")
+    }
+    
+    // Trim spaces
+    return strings.TrimSpace(s)
 }
 
 // Add new method to safely stop timer
@@ -315,6 +375,7 @@ func (s *GameService) handleRoundEnd(roomCode string) {
             "answers":         answers,
             "question":        question,
             "correct_answer":  question.Answer,
+            "active_players":  s.hub.GetActivePlayerCount(roomCode),
         },
     })
 
@@ -322,6 +383,22 @@ func (s *GameService) handleRoundEnd(roomCode string) {
 
     // Check if game should end
     if round.RoundNumber >= room.MaxRounds {
+        s.endGame(roomCode)
+        return
+    }
+
+    // Get number of active players
+    activePlayerCount := s.hub.GetActivePlayerCount(roomCode)
+    
+    // Don't start next round if no active players remain
+    if activePlayerCount == 0 {
+        log.Printf("No active players remain in room %s, not starting next round", roomCode)
+        return
+    }
+    
+    // If only one player remains, end the game
+    if activePlayerCount < 2 {
+        log.Printf("Only one active player remains in room %s, ending game", roomCode)
         s.endGame(roomCode)
         return
     }
@@ -340,6 +417,7 @@ func (s *GameService) handleRoundEnd(roomCode string) {
             "question":     question,
             "round_number": round.RoundNumber + 1,
             "time_limit":   room.RoundTime,
+            "active_players": activePlayerCount,
         },
     })
 }
@@ -373,8 +451,8 @@ func (s *GameService) endGame(roomCode string) {
         return
     }
 
-    // Get all players in the room
-    players := s.hub.GetPlayersInRoom(roomCode)
+    // Get all players in the room (including disconnected)
+    players := s.hub.GetAllPlayersInRoom(roomCode)
     playerResults := make(map[string]*PlayerResult)
 
     // Initialize results for all players
@@ -457,6 +535,16 @@ func (s *GameService) endGame(roomCode string) {
     }
     s.timerMutex.Unlock()
 
+    // Add player status to final results
+    for _, result := range finalResults {
+        client := s.hub.FindClientByID(roomCode, result.PlayerID)
+        if client != nil {
+            result.Status = client.Status // Add Status field to PlayerResult
+        } else {
+            result.Status = "disconnected"
+        }
+    }
+
     // Broadcast final results
     s.hub.BroadcastToRoom(roomCode, websocket.GameEvent{
         Type: "game_end",
@@ -464,10 +552,12 @@ func (s *GameService) endGame(roomCode string) {
             "final_results": finalResults,
             "total_rounds": len(rounds),
             "room_code":    roomCode,
+            "active_players": s.hub.GetActivePlayerCount(roomCode),
         },
     })
 
-    log.Printf("Game ended in room %s with %d players", roomCode, len(players))
+    log.Printf("Game ended in room %s with %d total players, %d active", 
+        roomCode, len(players), s.hub.GetActivePlayerCount(roomCode))
 }
 
 // ShouldEndRound determines if the round should end
@@ -477,9 +567,13 @@ func (s *GameService) ShouldEndRound(roomID string) bool {
         return false
     }
 
-    playerCount := s.hub.GetPlayerCount(roomID)
+    // Count only active players
+    activePlayerCount := s.hub.GetActivePlayerCount(roomID)
     timeExpired := time.Now().After(round.EndTime)
-    allAnswered := round.AnswerCount >= playerCount
+    allAnswered := round.AnswerCount >= activePlayerCount && activePlayerCount > 0
+
+    log.Printf("Round check: active_players=%d, answers=%d, time_expired=%v", 
+        activePlayerCount, round.AnswerCount, timeExpired)
 
     return timeExpired || allAnswered
 }
@@ -503,7 +597,10 @@ func (s *GameService) EndRound(roomID string) error {
 
     s.hub.BroadcastToRoom(roomID, websocket.GameEvent{
         Type: "round_result",
-        Data: answers,
+        Data: map[string]interface{}{
+            "answers": answers,
+            "active_players": s.hub.GetActivePlayerCount(roomID),
+        },
     })
 
     log.Printf("Ended round in room %s", roomID)
@@ -515,6 +612,18 @@ func (s *GameService) RestartGame(roomCode string, settings *models.GameSettings
     room, err := s.roomRepo.GetByCode(roomCode)
     if err != nil {
         return errors.New("room not found")
+    }
+
+    // Check if we have enough active players
+    activePlayerCount := s.hub.GetActivePlayerCount(roomCode)
+    if activePlayerCount < 2 {
+        return errors.New("need at least 2 active players to restart game")
+    }
+
+    // Clear previous game data to prevent score aggregation
+    if err := s.clearPreviousGameData(room.ID.String()); err != nil {
+        log.Printf("Warning: couldn't clear previous game data: %v", err)
+        // Continue anyway - this is not a fatal error
     }
 
     // Update room settings if provided
@@ -538,12 +647,39 @@ func (s *GameService) RestartGame(roomCode string, settings *models.GameSettings
             "settings": map[string]interface{}{
                 "max_rounds":  room.MaxRounds,
                 "round_time": room.RoundTime,
+                "active_players": activePlayerCount,
             },
         },
     })
 
-    log.Printf("Game restarted in room %s with %d rounds, %d seconds per round", 
-        roomCode, room.MaxRounds, room.RoundTime)
+    log.Printf("Game restarted in room %s with %d rounds, %d seconds per round, %d active players", 
+        roomCode, room.MaxRounds, room.RoundTime, activePlayerCount)
+    return nil
+}
+
+// clearPreviousGameData removes all rounds and player answers from previous games in this room
+func (s *GameService) clearPreviousGameData(roomID string) error {
+    // Get all rounds for this room
+    _, err := s.roundRepo.GetRoomRounds(roomID)
+    if err != nil {
+        return err
+    }
+    
+    // // Delete player answers and rounds
+    // for _, round := range rounds {
+    //     // Delete all answers for this round
+    //     if err := s.roundRepo.DeleteRoundAnswers(round.ID.String()); err != nil {
+    //         log.Printf("Error deleting answers for round %s: %v", round.ID.String(), err)
+    //         continue
+    //     }
+        
+    //     // Delete the round itself
+    //     if err := s.roundRepo.DeleteRound(round.ID.String()); err != nil {
+    //         log.Printf("Error deleting round %s: %v", round.ID.String(), err)
+    //     }
+    // }
+    
+    log.Printf("Cleared previous game data for room %s", roomID)
     return nil
 }
 
@@ -570,17 +706,19 @@ func (s *GameService) GetGameState(roomCode string, playerID string) (map[string
         log.Printf("Error getting player answers: %v", err)
     }
 
-    // Get all players in room
-    players := s.hub.GetPlayersInRoom(roomCode)
+    // Get all players in room (including disconnected)
+    allPlayers := s.hub.GetAllPlayersInRoom(roomCode)
+    activePlayers := s.hub.GetPlayersInRoom(roomCode)
 
     gameState := map[string]interface{}{
-        "room_code":     roomCode,
-        "game_status":   room.Status,
-        "current_round": room.CurrentRound,
-        "max_rounds":    room.MaxRounds,
-        "round_time":    room.RoundTime,
-        "players":       players,
-        "your_answers":  playerAnswers,
+        "room_code":      roomCode,
+        "game_status":    room.Status,
+        "current_round":  room.CurrentRound,
+        "max_rounds":     room.MaxRounds,
+        "round_time":     room.RoundTime,
+        "all_players":    allPlayers,    // Players with status
+        "active_players": activePlayers, // Only active players
+        "your_answers":   playerAnswers,
     }
 
     // Include current question if game is in progress

@@ -77,6 +77,8 @@ func (h *GameHandler) HandleMessage(client *websocket.Client, message []byte) er
     switch event.Type {
     case EventJoinRoom:
         return h.handleJoinRoom(client, event.Data)
+    case EventLeaveRoom:
+        return h.handleLeaveRoom(client)
     case EventStartGame:
         return h.handleStartGame(client)
     case EventSubmitAnswer:
@@ -89,8 +91,6 @@ func (h *GameHandler) HandleMessage(client *websocket.Client, message []byte) er
         return h.sendError(client, "Unknown event type")
     }
 }
-
-// internal/handlers/game_handler.go
 
 func (h *GameHandler) handleJoinRoom(client *websocket.Client, data json.RawMessage) error {
     var joinData JoinRoomData
@@ -105,14 +105,16 @@ func (h *GameHandler) handleJoinRoom(client *websocket.Client, data json.RawMess
     }
 
     // Update client info
-    client.RoomID = room.Code  // Changed from ID to Code
+    client.RoomID = room.Code
     client.Username = joinData.Username
+    client.Status = "active"
 
     // Register client with hub
     h.hub.Register <- client
 
-    // Get current players after registration
-    players := h.hub.GetPlayersInRoom(room.Code)  // Changed from ID to Code
+    // Get all players in room (including disconnected)
+    allPlayers := h.hub.GetAllPlayersInRoom(room.Code)
+    activePlayers := h.hub.GetPlayersInRoom(room.Code)
 
     // Notify room about new player
     h.hub.BroadcastToRoom(room.Code, websocket.GameEvent{
@@ -120,7 +122,7 @@ func (h *GameHandler) handleJoinRoom(client *websocket.Client, data json.RawMess
         Data: map[string]interface{}{
             "player_id": client.ID,
             "username": joinData.Username,
-            "total_players": len(players) + 1,
+            "total_players": len(activePlayers),
         },
     })
 
@@ -129,7 +131,8 @@ func (h *GameHandler) handleJoinRoom(client *websocket.Client, data json.RawMess
         Type: "room_joined",
         Data: map[string]interface{}{
             "room_code": room.Code,
-            "players": players,
+            "players": allPlayers, // Send all players with their status
+            "active_players": activePlayers, // For backward compatibility
             "settings": map[string]interface{}{
                 "max_players": room.MaxPlayers,
                 "round_time": room.RoundTime,
@@ -139,8 +142,41 @@ func (h *GameHandler) handleJoinRoom(client *websocket.Client, data json.RawMess
     })
 }
 
+// Add handler for explicit leave room requests
+func (h *GameHandler) handleLeaveRoom(client *websocket.Client) error {
+    if client.RoomID == "" {
+        return h.sendError(client, "Not in a room")
+    }
+    
+    roomCode := client.RoomID
+    
+    // Mark client as disconnected
+    client.Status = "disconnected"
+    
+    // Notify other players
+    h.hub.BroadcastToRoom(roomCode, websocket.GameEvent{
+        Type: "player_left",
+        Data: map[string]interface{}{
+            "player_id": client.ID,
+            "username": client.Username,
+        },
+    })
+    
+    // Unregister from hub
+    h.hub.Unregister <- client
+    
+    log.Printf("Player %s explicitly left room %s", client.ID, roomCode)
+    return nil
+}
+
 func (h *GameHandler) handleStartGame(client *websocket.Client) error {
     log.Printf("Start game request from client %s in room %s", client.ID, client.RoomID)
+
+    // Check if we have enough active players
+    activePlayerCount := h.hub.GetActivePlayerCount(client.RoomID)
+    if activePlayerCount < 2 {
+        return h.sendError(client, "Need at least 2 active players to start")
+    }
 
     // Start the game using room code
     if err := h.roomService.StartGame(client.RoomID); err != nil {
@@ -159,6 +195,7 @@ func (h *GameHandler) handleStartGame(client *websocket.Client) error {
         Data: map[string]interface{}{
             "question": question,
             "round_number": 1,
+            "active_players": activePlayerCount,
         },
     })
 
@@ -208,10 +245,14 @@ func (h *GameHandler) endRound(roomID string) error {
             return
         }
 
+        // Get active player count
+        activePlayerCount := h.hub.GetActivePlayerCount(roomID)
+
         h.hub.BroadcastToRoom(roomID, websocket.GameEvent{
             Type: "round_started",
             Data: map[string]interface{}{
                 "question": question,
+                "active_players": activePlayerCount,
             },
         })
     }()
@@ -233,6 +274,12 @@ func (h *GameHandler) handlePlayAgain(client *websocket.Client, data json.RawMes
         settings.RoundTime = 30 // Default
     }
 
+    // Check active player count
+    activePlayerCount := h.hub.GetActivePlayerCount(client.RoomID)
+    if activePlayerCount < 2 {
+        return h.sendError(client, "Need at least 2 active players to restart game")
+    }
+
     // Restart game
     if err := h.gameService.RestartGame(client.RoomID, &models.GameSettings{
         MaxRounds: settings.MaxRounds,
@@ -249,19 +296,36 @@ func (h *GameHandler) handleReconnect(client *websocket.Client, data json.RawMes
     if err := json.Unmarshal(data, &reconnectData); err != nil {
         return h.sendError(client, "Invalid reconnect data format")
     }
-
+    
     // Verify room exists and is active
     room, err := h.roomService.GetRoom(reconnectData.RoomCode)
     if err != nil {
         return h.sendError(client, "Room not found")
     }
 
-    // Update client info
-    client.ID = reconnectData.PlayerID
+    // Find existing client
+    existingClient := h.hub.FindClientByID(reconnectData.RoomCode, reconnectData.PlayerID)
+    
+    if existingClient == nil {
+        // Player wasn't in this room
+        return h.sendError(client, "Player not found in this room")
+    }
+    
+    if existingClient.Status == "active" {
+        // Someone is already connected with this ID
+        return h.sendError(client, "Player already active in this room")
+    }
+    
+    // Update client info from existing client
+    client.ID = existingClient.ID
     client.RoomID = room.Code
-    client.Username = reconnectData.Username
-
-    // Register client with hub
+    client.Username = existingClient.Username
+    client.Status = "active"
+    
+    // Remove old client
+    h.hub.RemoveClient(existingClient)
+    
+    // Register new client in place of old one
     h.hub.Register <- client
 
     // Get game state
@@ -269,6 +333,15 @@ func (h *GameHandler) handleReconnect(client *websocket.Client, data json.RawMes
     if err != nil {
         return h.sendError(client, err.Error())
     }
+
+    // Notify other players about reconnection
+    h.hub.BroadcastToRoom(room.Code, websocket.GameEvent{
+        Type: "player_reconnected",
+        Data: map[string]interface{}{
+            "player_id": client.ID,
+            "username": client.Username,
+        },
+    })
 
     // Send current game state to reconnected player
     return h.hub.SendToClient(client, websocket.GameEvent{
