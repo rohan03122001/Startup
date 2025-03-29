@@ -270,6 +270,17 @@ func (h *GameHandler) handleReconnect(client *websocket.Client, data json.RawMes
         return h.sendError(client, err.Error())
     }
 
+    // Notify other players about the reconnection
+    h.hub.BroadcastToRoom(room.Code, websocket.GameEvent{
+        Type: "player_reconnected",
+        Data: map[string]interface{}{
+            "player_id": client.ID,
+            "username": client.Username,
+        },
+    })
+
+    log.Printf("Player %s (%s) reconnected to room %s", client.ID, client.Username, room.Code)
+
     // Send current game state to reconnected player
     return h.hub.SendToClient(client, websocket.GameEvent{
         Type: "reconnected",

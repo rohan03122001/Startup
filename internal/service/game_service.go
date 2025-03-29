@@ -648,10 +648,16 @@ func (s *GameService) GetGameState(roomCode string, playerID string) (map[string
     // Get current round if game is in progress
     var currentRound *models.GameRound
     var currentQuestion *models.Question
+    var roundTimeRemaining int
     if room.Status == "playing" {
         currentRound, err = s.roundRepo.GetCurrentRound(room.ID.String())
         if err == nil && currentRound != nil {
             currentQuestion, _ = s.questionRepo.GetByID(currentRound.QuestionID.String())
+            
+            // Calculate remaining time
+            if time.Now().Before(currentRound.EndTime) {
+                roundTimeRemaining = int(time.Until(currentRound.EndTime).Seconds())
+            }
         }
     }
 
@@ -660,10 +666,19 @@ func (s *GameService) GetGameState(roomCode string, playerID string) (map[string
     if err != nil {
         log.Printf("Error getting player answers: %v", err)
     }
+    
+    // Calculate player's total score
+    totalScore := 0
+    for _, answer := range playerAnswers {
+        totalScore += answer.Score
+    }
 
     // Get all players in room
     players := s.hub.GetPlayersInRoom(roomCode)
-
+    
+    // Get all rounds for this room to provide complete game context
+    rounds, err := s.roundRepo.GetRoomRounds(room.ID.String())
+    
     gameState := map[string]interface{}{
         "room_code":     roomCode,
         "game_status":   room.Status,
@@ -672,12 +687,15 @@ func (s *GameService) GetGameState(roomCode string, playerID string) (map[string
         "round_time":    room.RoundTime,
         "players":       players,
         "your_answers":  playerAnswers,
+        "your_score":    totalScore,
+        "rounds":        rounds,
     }
 
     // Include current question if game is in progress
     if currentQuestion != nil {
         gameState["current_question"] = currentQuestion
         gameState["round_end_time"] = currentRound.EndTime
+        gameState["time_remaining"] = roundTimeRemaining
     }
 
     return gameState, nil

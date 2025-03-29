@@ -66,6 +66,19 @@ func (c *Client) SetMessageHandler(handler func(*Client, []byte) error) {
 // ReadPump pumps messages from the WebSocket connection to the hub
 func (c *Client) ReadPump() {
     defer func() {
+        // Notify other clients in the room that this client disconnected
+        if c.RoomID != "" {
+            log.Printf("Client %s disconnected from room %s", c.ID, c.RoomID)
+            // Only broadcast disconnect event if the client was in a room
+            c.hub.BroadcastToRoom(c.RoomID, GameEvent{
+                Type: "player_disconnected",
+                Data: map[string]interface{}{
+                    "player_id": c.ID,
+                    "username": c.Username,
+                },
+            })
+        }
+        
         c.hub.Unregister <- c
         c.conn.Close()
         log.Printf("Client %s disconnected", c.ID)
