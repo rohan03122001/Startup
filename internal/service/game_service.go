@@ -700,3 +700,37 @@ func (s *GameService) GetGameState(roomCode string, playerID string) (map[string
 
     return gameState, nil
 }
+
+func (s *GameService) GetPlayerAnswers(roomCode string, playerID string) ([]models.PlayerAnswer, error) {
+    room, err := s.roomRepo.GetByCode(roomCode)
+    if err != nil {
+        return nil, errors.New("room not found")
+    }
+    
+    answers, err := s.roundRepo.GetPlayerAnswers(room.ID.String(), playerID)
+    if err != nil {
+        log.Printf("Error retrieving player answers: %v", err)
+        return nil, err
+    }
+    
+    return answers, nil
+}
+
+func (s *GameService) ValidatePlayerInRoom(roomCode string, playerID string) bool {
+    // Check if this player ID exists in any previous room state records
+    // This is a simplified check that could be enhanced with more robust validation
+    
+    // Check if there's a client with this ID currently or previously in the room
+    players := s.hub.GetPlayersInRoom(roomCode)
+    for _, player := range players {
+        if player["id"] == playerID {
+            return true
+        }
+    }
+    
+    // If the hub method doesn't find the player (may happen if the room was restarted),
+    // we could add additional checks here, such as checking session storage
+    // or a dedicated "known players" table in the database
+    
+    return false
+}
