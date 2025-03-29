@@ -648,10 +648,16 @@ func (s *GameService) GetGameState(roomCode string, playerID string) (map[string
     // Get current round if game is in progress
     var currentRound *models.GameRound
     var currentQuestion *models.Question
+    var roundTimeRemaining int
     if room.Status == "playing" {
         currentRound, err = s.roundRepo.GetCurrentRound(room.ID.String())
         if err == nil && currentRound != nil {
             currentQuestion, _ = s.questionRepo.GetByID(currentRound.QuestionID.String())
+            
+            // Calculate remaining time
+            if time.Now().Before(currentRound.EndTime) {
+                roundTimeRemaining = int(time.Until(currentRound.EndTime).Seconds())
+            }
         }
     }
 
@@ -660,10 +666,19 @@ func (s *GameService) GetGameState(roomCode string, playerID string) (map[string
     if err != nil {
         log.Printf("Error getting player answers: %v", err)
     }
+    
+    // Calculate player's total score
+    totalScore := 0
+    for _, answer := range playerAnswers {
+        totalScore += answer.Score
+    }
 
     // Get all players in room
     players := s.hub.GetPlayersInRoom(roomCode)
-
+    
+    // Get all rounds for this room to provide complete game context
+    rounds, err := s.roundRepo.GetRoomRounds(room.ID.String())
+    
     gameState := map[string]interface{}{
         "room_code":     roomCode,
         "game_status":   room.Status,
@@ -672,13 +687,50 @@ func (s *GameService) GetGameState(roomCode string, playerID string) (map[string
         "round_time":    room.RoundTime,
         "players":       players,
         "your_answers":  playerAnswers,
+        "your_score":    totalScore,
+        "rounds":        rounds,
     }
 
     // Include current question if game is in progress
     if currentQuestion != nil {
         gameState["current_question"] = currentQuestion
         gameState["round_end_time"] = currentRound.EndTime
+        gameState["time_remaining"] = roundTimeRemaining
     }
 
     return gameState, nil
+}
+
+func (s *GameService) GetPlayerAnswers(roomCode string, playerID string) ([]models.PlayerAnswer, error) {
+    room, err := s.roomRepo.GetByCode(roomCode)
+    if err != nil {
+        return nil, errors.New("room not found")
+    }
+    
+    answers, err := s.roundRepo.GetPlayerAnswers(room.ID.String(), playerID)
+    if err != nil {
+        log.Printf("Error retrieving player answers: %v", err)
+        return nil, err
+    }
+    
+    return answers, nil
+}
+
+func (s *GameService) ValidatePlayerInRoom(roomCode string, playerID string) bool {
+    // Check if this player ID exists in any previous room state records
+    // This is a simplified check that could be enhanced with more robust validation
+    
+    // Check if there's a client with this ID currently or previously in the room
+    players := s.hub.GetPlayersInRoom(roomCode)
+    for _, player := range players {
+        if player["id"] == playerID {
+            return true
+        }
+    }
+    
+    // If the hub method doesn't find the player (may happen if the room was restarted),
+    // we could add additional checks here, such as checking session storage
+    // or a dedicated "known players" table in the database
+    
+    return false
 }

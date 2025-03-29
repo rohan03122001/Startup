@@ -255,6 +255,24 @@ func (h *GameHandler) handleReconnect(client *websocket.Client, data json.RawMes
     if err != nil {
         return h.sendError(client, "Room not found")
     }
+    
+    // Check if this player ID was in this room
+    wasInRoom, storedUsername := h.hub.WasPlayerInRoom(room.Code, reconnectData.PlayerID)
+    
+    if !wasInRoom {
+        // As a fallback, check game history
+        playerAnswers, err := h.gameService.GetPlayerAnswers(room.Code, reconnectData.PlayerID)
+        if err != nil || len(playerAnswers) == 0 {
+            log.Printf("Rejected reconnection attempt with invalid player ID: %s to room %s", 
+                reconnectData.PlayerID, reconnectData.RoomCode)
+            return h.sendError(client, "Invalid player ID or player was not in this room")
+        }
+    }
+    
+    // If username was blank in the request but we have a stored one, use the stored one
+    if reconnectData.Username == "" && storedUsername != "" {
+        reconnectData.Username = storedUsername
+    }
 
     // Update client info
     client.ID = reconnectData.PlayerID
@@ -269,6 +287,17 @@ func (h *GameHandler) handleReconnect(client *websocket.Client, data json.RawMes
     if err != nil {
         return h.sendError(client, err.Error())
     }
+
+    // Notify other players about the reconnection
+    h.hub.BroadcastToRoom(room.Code, websocket.GameEvent{
+        Type: "player_reconnected",
+        Data: map[string]interface{}{
+            "player_id": client.ID,
+            "username": client.Username,
+        },
+    })
+
+    log.Printf("Player %s (%s) reconnected to room %s", client.ID, client.Username, room.Code)
 
     // Send current game state to reconnected player
     return h.hub.SendToClient(client, websocket.GameEvent{
