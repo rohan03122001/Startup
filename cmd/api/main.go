@@ -4,14 +4,17 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/rohan03122001/quizzing/internal/config"
 	"github.com/rohan03122001/quizzing/internal/handlers"
 	"github.com/rohan03122001/quizzing/internal/repository"
 	"github.com/rohan03122001/quizzing/internal/service"
@@ -19,16 +22,26 @@ import (
 )
 
 func main() {
-    // Set Gin mode
-    gin.SetMode(gin.DebugMode)
+    // Set Gin mode based on environment
+    ginMode := os.Getenv("GIN_MODE")
+    if ginMode == "" {
+        ginMode = gin.DebugMode
+    }
+    gin.SetMode(ginMode)
+
+    // Get database configuration from environment variables
+    dbConfig, err := config.GetDBConfig()
+    if err != nil {
+        log.Fatalf("Failed to get database config: %v", err)
+    }
 
     // Initialize database
     db, err := repository.NewDatabase(&repository.DBConfig{
-        Host:     "localhost",
-        Port:     "5434",  // Match the port from docker-compose
-        User:     "postgres",
-        Password: "postgres",
-        DBName:   "quiz_app",
+        Host:     dbConfig.Host,
+        Port:     strconv.Itoa(dbConfig.Port),
+        User:     dbConfig.User,
+        Password: dbConfig.Password,
+        DBName:   dbConfig.DBName,
         SSLMode:  "disable",
     })
     if err != nil {
@@ -66,15 +79,41 @@ func main() {
     httpHandler.RegisterRoutes(router)
     wsHandler.RegisterRoutes(router)
 
+    // Enhanced CORS middleware
+    router.Use(func(c *gin.Context) {
+        // Get allowed origins from environment or use default
+        allowedOrigin := os.Getenv("ALLOWED_ORIGIN")
+        if allowedOrigin == "" {
+            allowedOrigin = "*" // Default to allow all in development
+        }
+        
+        c.Writer.Header().Set("Access-Control-Allow-Origin", allowedOrigin)
+        c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS, PUT, DELETE")
+        c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+        c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
+        
+        if c.Request.Method == "OPTIONS" {
+            c.AbortWithStatus(204)
+            return
+        }
+        c.Next()
+    })
+
+    // Get port from environment variable or use default
+    port := os.Getenv("PORT")
+    if port == "" {
+        port = "8080" // Default port
+    }
+
     // Create server
     srv := &http.Server{
-        Addr:    ":8080",
+        Addr:    fmt.Sprintf(":%s", port),
         Handler: router,
     }
 
     // Start server in goroutine
     go func() {
-        log.Printf("Server starting on port 8080")
+        log.Printf("Server starting on port %s", port)
         if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
             log.Fatalf("Failed to start server: %v", err)
         }
