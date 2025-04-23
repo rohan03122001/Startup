@@ -28,6 +28,7 @@ type RoundResult struct {
     Correct bool `json:"correct"`
     Score   int  `json:"score"`
     Order   int  `json:"order"`
+    Message string  `json:"message"`
 }
 
 // Add this new struct for final results
@@ -248,6 +249,7 @@ func (s *GameService) ProcessAnswer(roomCode string, playerID string, answer str
         Correct: false,
         Score:   0,
         Order:   0,
+        Message: "i<369",
     }, nil
 }
 
